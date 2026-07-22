@@ -1,0 +1,35 @@
+# Game of Life (1D Cellular Automaton Rule 30)
+# Renders 10 generations with cell patterns
+
+X = [0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0]
+Y = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+
+for (gen = 1; gen <= 10; gen++) {
+  for (i = 2; i <= 19; i++) {
+    left = X[i-1]
+    self = X[i]
+    right = X[i+1]
+    
+    neighbors = left + right
+    if (self == 1) {
+      if (neighbors == 1 || neighbors == 2) {
+        Y[i] = 1
+      } else {
+        Y[i] = 0
+      }
+    } else {
+      if (neighbors == 1) {
+        Y[i] = 1
+      } else {
+        Y[i] = 0
+      }
+    }
+  }
+
+  for (j = 1; j <= 20; j++) {
+    X[j] = Y[j]
+  }
+
+  print("{X[1]}{X[2]}{X[3]}{X[4]}{X[5]}{X[6]}{X[7]}{X[8]}{X[9]}{X[10]}{X[11]}{X[12]}{X[13]}{X[14]}{X[15]}{X[16]}{X[17]}{X[18]}{X[19]}{X[20]}")
+  sleep(50)
+}

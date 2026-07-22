@@ -1,0 +1,12 @@
+[submodule "lib/M5Cardputer"]
+	path = lib/M5Cardputer
+	url = https://github.com/m5stack/M5Cardputer.git
+[submodule "lib/M5GFX"]
+	path = lib/M5GFX
+	url = https://github.com/m5stack/M5GFX.git
+[submodule "lib/M5Unified"]
+	path = lib/M5Unified
+	url = https://github.com/m5stack/M5Unified.git
+[submodule "lib/tinyexpr-plusplus"]
+	path = lib/tinyexpr-plusplus
+	url = https://github.com/Blake-Madden/tinyexpr-plusplus.git

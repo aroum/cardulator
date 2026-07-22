@@ -1,0 +1,12 @@
+# PlatformIO / Build output
+.pio/
+.pioenvs/
+.piolibdeps/
+*.log
+
+# OS / Editor generated
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.tmp

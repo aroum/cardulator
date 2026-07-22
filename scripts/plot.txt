@@ -1,0 +1,49 @@
+# Calculator Script - Math & Plot Demo
+print("=== Starting Demo ===")
+
+# 1. Variables & Basic Math
+radius = 5.5
+area = pi * radius^2
+print("Circle area: {area}")
+
+# 2. Vectors, Ranges & Scalar Product
+X = 1:5
+Y = [10, 20, 30, 40, 50]
+dot_prod = X * Y
+len_y = len(Y)
+print("Dot product: {dot_prod}, Y len: {len_y}")
+
+# 3. Loops (for & while)
+sum_val = 0
+for (i = 1; i <= len_y; i++) {
+  sum_val += Y[i]
+}
+print("Sum of Y: {sum_val}")
+
+counter = 1
+while (counter <= 3) {
+  print("Step {counter}...")
+  counter++
+  sleep(50)
+}
+
+# 4. Conditional logic (if / else)
+if (sum_val > 100) {
+  print("Y sum is large")
+} else if (sum_val > 50) {
+  print("Y sum is medium")
+} else {
+  print("Y sum is small")
+}
+
+# 5. Functions & Plotting
+plot.hold(1)
+px = -5:0.5:5
+py1 = sin(px)
+py2 = cos(px)
+plot(px, py1, "r", "-")
+plot(px, py2, "g", "--")
+plot.show()
+
+print("Plot generated successfully!")
+print("=== Demo Complete ===")

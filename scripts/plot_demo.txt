@@ -1,0 +1,28 @@
+# Beautiful Math Showcase - Lissajous & Curves Demo
+print("=== Generating Math Showcase ===")
+
+# Enable multi-curve overlay mode
+plot.hold(1)
+
+# Parameter t array from 0 to 360 degrees (step 5)
+t = 0:5:360
+
+# 1. Circle of radius 3: X = 3*cos(t), Y = 3*sin(t)
+cx = 3 * cos(t)
+cy = 3 * sin(t)
+plot(cx, cy, "y", "--")
+
+# 2. Lissajous Curve (3:2 frequency ratio): X = 5*sin(3*t), Y = 5*sin(2*t)
+lx = 5 * sin(3 * t)
+ly = 5 * sin(2 * t)
+plot(lx, ly, "c", "-")
+
+# 3. Parabola: Y = 0.2 * X^2 - 4
+px = -6:0.5:6
+py = 0.2 * (px .* px) - 4
+plot(px, py, "m", "-.")
+
+# Display the multi-layer mathematical chart
+plot.show()
+
+print("Showcase rendered successfully!")
