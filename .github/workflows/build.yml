@@ -3,6 +3,8 @@ name: Build Cardulator
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
 
@@ -35,8 +37,21 @@ jobs:
       run: |
         pio run -e cardputer
 
+    - name: Prepare Binary Artifact
+      id: prep
+      run: |
+        VERSION=$(git describe --tags --always || echo "v1.0.0")
+        BIN_NAME="cardulator-${VERSION}.bin"
+        cp .pio/build/cardputer/firmware.bin "${BIN_NAME}"
+        cp .pio/build/cardputer/firmware.bin "cardulator.bin"
+        echo "bin_name=${BIN_NAME}" >> $GITHUB_OUTPUT
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
     - name: Upload firmware artifact
       uses: actions/upload-artifact@v4
       with:
-        name: cardulator-firmware
-        path: .pio/build/cardputer/firmware.bin
+        name: ${{ steps.prep.outputs.bin_name }}
+        path: |
+          ${{ steps.prep.outputs.bin_name }}
+          cardulator.bin
+
