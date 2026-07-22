@@ -42,8 +42,17 @@ jobs:
       run: |
         VERSION=$(git describe --tags --always || echo "v1.0.0")
         BIN_NAME="cardulator-${VERSION}.bin"
-        cp .pio/build/cardputer/firmware.bin "${BIN_NAME}"
-        cp .pio/build/cardputer/firmware.bin "cardulator.bin"
+        
+        # Locate generated firmware binary
+        FW_PATH=$(find .pio/build/ -name "firmware.bin" | head -n 1)
+        if [ -z "$FW_PATH" ]; then
+          echo "Error: firmware.bin not found!"
+          ls -R .pio/
+          exit 1
+        fi
+        
+        cp "$FW_PATH" "${BIN_NAME}"
+        cp "$FW_PATH" "cardulator.bin"
         echo "bin_name=${BIN_NAME}" >> $GITHUB_OUTPUT
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
@@ -54,4 +63,5 @@ jobs:
         path: |
           ${{ steps.prep.outputs.bin_name }}
           cardulator.bin
+
 
