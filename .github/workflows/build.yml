@@ -10,6 +10,9 @@ on:
 
 jobs:
   build:
+    # Prevent duplicate builds when pushing a tag on main
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/heads/') || !contains(github.ref, 'main') || github.event.head_commit.message != ''
+
     runs-on: ubuntu-latest
 
     steps:
@@ -43,14 +46,15 @@ jobs:
         VERSION=$(git describe --tags --always || echo "v1.0.0")
         BIN_NAME="cardulator-${VERSION}.bin"
         
-        # Locate generated firmware binary
-        FW_PATH=$(find .pio/build/ -name "firmware.bin" | head -n 1)
+        # Locate generated firmware binary (cardulator.bin or firmware.bin)
+        FW_PATH=$(find .pio/build/ -name "*.bin" ! -name "partitions.bin" | head -n 1)
         if [ -z "$FW_PATH" ]; then
-          echo "Error: firmware.bin not found!"
+          echo "Error: binary artifact not found!"
           ls -R .pio/
           exit 1
         fi
         
+        echo "Found firmware binary at: $FW_PATH"
         cp "$FW_PATH" "${BIN_NAME}"
         cp "$FW_PATH" "cardulator.bin"
         echo "bin_name=${BIN_NAME}" >> $GITHUB_OUTPUT
@@ -63,5 +67,6 @@ jobs:
         path: |
           ${{ steps.prep.outputs.bin_name }}
           cardulator.bin
+
 
 
