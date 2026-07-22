@@ -8,12 +8,14 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    # Prevent duplicate builds when pushing a tag on main
-    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/heads/') || !contains(github.ref, 'main') || github.event.head_commit.message != ''
-
     runs-on: ubuntu-latest
+
 
     steps:
     - name: Checkout repository
