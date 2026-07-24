@@ -29,10 +29,10 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install PlatformIO
+    - name: Install PlatformIO & esptool
       run: |
         python -m pip install --upgrade pip
-        pip install platformio
+        pip install platformio esptool requests
 
     - name: Run Native Host Tests
       run: |
@@ -42,23 +42,15 @@ jobs:
       run: |
         pio run -e cardputer
 
-    - name: Prepare Binary Artifact
+    - name: Prepare Merged Binary Artifact
       id: prep
       run: |
         VERSION=$(git describe --tags --always || echo "v1.0.0")
         BIN_NAME="cardulator-${VERSION}.bin"
         
-        # Locate generated firmware binary (cardulator.bin or firmware.bin)
-        FW_PATH=$(find .pio/build/ -name "*.bin" ! -name "partitions.bin" | head -n 1)
-        if [ -z "$FW_PATH" ]; then
-          echo "Error: binary artifact not found!"
-          ls -R .pio/
-          exit 1
-        fi
-        
-        echo "Found firmware binary at: $FW_PATH"
-        cp "$FW_PATH" "${BIN_NAME}"
-        cp "$FW_PATH" "cardulator.bin"
+        FW_PATH=$(find .pio/build/cardputer/ -name "*.bin" ! -name "bootloader.bin" ! -name "partitions.bin" | head -n 1)
+        esptool.py --chip esp32s3 merge_bin -o cardulator.bin 0x0 .pio/build/cardputer/bootloader.bin 0x8000 .pio/build/cardputer/partitions.bin 0x10000 "$FW_PATH"
+        cp "cardulator.bin" "${BIN_NAME}"
         echo "bin_name=${BIN_NAME}" >> $GITHUB_OUTPUT
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
@@ -69,6 +61,14 @@ jobs:
         path: |
           ${{ steps.prep.outputs.bin_name }}
           cardulator.bin
+
+    - name: Publish to M5Burner
+      if: startsWith(github.ref, 'refs/tags/v') && env.M5BURNER_USER != '' && env.M5BURNER_PWD != ''
+      env:
+        M5BURNER_USER: ${{ secrets.M5BURNER_USER }}
+        M5BURNER_PWD: ${{ secrets.M5BURNER_PWD }}
+      run: |
+        python3 scripts/m5burner_post.py --user "$M5BURNER_USER" --password "$M5BURNER_PWD" --tag "${{ steps.prep.outputs.version }}"
 
 
 
