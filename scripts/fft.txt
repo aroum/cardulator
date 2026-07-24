@@ -1,0 +1,52 @@
+# Fast Fourier Transform (FFT / DFT) Spectrum Analysis
+# Analyzes a composite signal of 3 distinct non-harmonic sines (6.25 Hz, 15.625 Hz, 31.25 Hz)
+
+print("=== FFT Spectrum Analysis ===");
+
+# 1. Sampling Parameters
+Fs = 100;
+N = 32;
+dt = 1 / Fs;
+
+print("Generating signal: 6.25 Hz (A=3.0), 15.625 Hz (A=1.5), 31.25 Hz (A=2.0)...");
+
+# Time array t and signal x
+t = (0:1:31) * dt;
+x = 3.0 * sin(360 * 6.25 * t) + 1.5 * sin(360 * 15.625 * t) + 2.0 * sin(360 * 31.25 * t);
+
+# Display Plot 1: Time Domain Signal
+print("Plotting Time-Domain Signal...");
+plot.hold(0);
+plot(t, x, "b", "-");
+plot.show();
+
+# 2. Compute Discrete Fourier Transform Spectrum (Vectorized DFT)
+num_freqs = N / 2;
+freq = 0:1:15;
+mag = 0:1:15;
+
+k = 1;
+while (k <= num_freqs) {
+    k_idx = k - 1;
+    freq[k] = k_idx * (Fs / N);
+
+    # Vectorized DFT calculation for harmonic k_idx
+    angles = (360 * k_idx / N) * (0:1:31);
+    re = sum(x .* cos(angles));
+    im = 0 - sum(x .* sin(angles));
+
+    # Normalized magnitude spectrum
+    mag_val = sqrt(re * re + im * im) * (2 / N);
+    scale = if(k_idx == 0, 0.5, 1.0);
+    mag[k] = mag_val * scale;
+
+    k = k + 1;
+}
+
+# Display Plot 2: Frequency Spectrum (FFT)
+print("Plotting Frequency Spectrum (FFT)...");
+plot.hold(0);
+plot(freq, mag, "r", "-");
+plot.show();
+
+print("FFT Spectrum Analysis Complete!");

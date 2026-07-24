@@ -2,8 +2,11 @@
 #include "math_funcs.h"
 #include "plot_engine.h"
 #include <iostream>
-#ifdef ARDUINO
+#if defined(ARDUINO) || defined(ESP32) || defined(ESP_PLATFORM)
 #include <Arduino.h>
+#endif
+#if defined(ESP32) || defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+#include <esp_task_wdt.h>
 #endif
 
 extern double evaluate(const std::string& expr_str, std::string& err);
@@ -15,9 +18,12 @@ extern bool parseBinaryOp(const std::string& rhs, std::string& op1, std::string&
 extern std::vector<double> evaluateArrayBinaryOp(const std::string& op1_str, const std::string& op_str, const std::string& op2_str, bool& is_scalar_result, double& scalar_val, std::string& err);
 extern std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::string& err);
 extern std::string preprocessLen(const std::string& s);
+extern std::string preprocessVectorStats(const std::string& s);
 
 double script_return_val = 0.0;
 bool script_has_returned = false;
+std::vector<double> script_return_vec;
+bool script_return_is_vec = false;
 
 void runScript(const std::string& code) {
     script_console_output.clear();
@@ -58,8 +64,11 @@ void runScript(const std::string& code) {
     while (ip < lines.size() && step_count < max_steps) {
         if (script_has_returned) break;
         step_count++;
-        #ifdef ARDUINO
-        yield();
+        #if defined(ESP32) || defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+        esp_task_wdt_reset();
+        delay(1);
+        #elif defined(ARDUINO)
+        delay(1);
         #endif
         
         std::string line = lines[ip];
@@ -69,12 +78,6 @@ void runScript(const std::string& code) {
             ip++;
             continue;
         }
-        if (line.find("X =") != std::string::npos || line.find("Y =") != std::string::npos) {
-            printf("[LINE EXEC ip=%zu] %s\n", ip, line.c_str());
-        }
-        if (step_count < 100) {
-            printf("[STEP %d ip=%zu] %s\n", step_count, ip, line.c_str());
-        }
         
         // return statement
         if (line.rfind("return", 0) == 0 && (line.size() == 6 || line[6] == ' ' || line[6] == '\t')) {
@@ -83,12 +86,65 @@ void runScript(const std::string& code) {
             ret_expr.erase(ret_expr.find_last_not_of(" \t") + 1);
             if (ret_expr.empty()) ret_expr = "0";
             
-            std::string eval_err;
-            script_return_val = evaluate(preprocessArrayLookups(ret_expr, eval_err), eval_err);
-            if (!eval_err.empty()) {
-                script_console_output.push_back("Error: " + eval_err);
+            // Check if return has multiple expressions separated by commas (outside brackets/quotes)
+            std::vector<std::string> ret_parts;
+            std::string current_part = "";
+            int p_depth = 0, b_depth = 0;
+            for (size_t c_i = 0; c_i < ret_expr.size(); ++c_i) {
+                char ch = ret_expr[c_i];
+                if (ch == '(') p_depth++;
+                else if (ch == ')') { if (p_depth > 0) p_depth--; }
+                else if (ch == '[') b_depth++;
+                else if (ch == ']') { if (b_depth > 0) b_depth--; }
+                
+                if (ch == ',' && p_depth == 0 && b_depth == 0) {
+                    ret_parts.push_back(current_part);
+                    current_part = "";
+                } else {
+                    current_part += ch;
+                }
+            }
+            if (!current_part.empty()) ret_parts.push_back(current_part);
+            
+            if (ret_parts.size() > 1) {
+                script_return_is_vec = true;
+                script_return_vec.clear();
+                std::string out_str = "Return: [";
+                for (size_t r_i = 0; r_i < ret_parts.size(); ++r_i) {
+                    std::string part = ret_parts[r_i];
+                    part.erase(0, part.find_first_not_of(" \t"));
+                    part.erase(part.find_last_not_of(" \t") + 1);
+                    std::string eval_err;
+                    double v = evaluate(preprocessArrayLookups(part, eval_err), eval_err);
+                    script_return_vec.push_back(v);
+                    out_str += fmtNum(v) + (r_i + 1 < ret_parts.size() ? ", " : "]");
+                }
+                script_return_val = script_return_vec[0];
+                script_console_output.push_back(out_str);
             } else {
-                script_console_output.push_back("Return: " + fmtNum(script_return_val));
+                bool is_arr = false;
+                std::string parse_err;
+                std::vector<double> arr = parseArrayExpr(ret_expr, is_arr, parse_err);
+                if (is_arr && parse_err.empty()) {
+                    script_return_is_vec = true;
+                    script_return_vec = arr;
+                    script_return_val = arr.empty() ? 0.0 : arr[0];
+                    std::string out_str = "Return: [";
+                    for (size_t r_i = 0; r_i < arr.size(); ++r_i) {
+                        out_str += fmtNum(arr[r_i]) + (r_i + 1 < arr.size() ? ", " : "]");
+                    }
+                    script_console_output.push_back(out_str);
+                } else {
+                    std::string eval_err;
+                    script_return_val = evaluate(preprocessArrayLookups(ret_expr, eval_err), eval_err);
+                    script_return_is_vec = false;
+                    script_return_vec = {script_return_val};
+                    if (!eval_err.empty()) {
+                        script_console_output.push_back("Error: " + eval_err);
+                    } else {
+                        script_console_output.push_back("Return: " + fmtNum(script_return_val));
+                    }
+                }
             }
             script_has_returned = true;
             break;
@@ -98,8 +154,7 @@ void runScript(const std::string& code) {
         if (line.rfind("fn ", 0) == 0 || line.rfind("def ", 0) == 0 || line.rfind("function ", 0) == 0) {
             size_t open_paren = line.find('(');
             size_t close_paren = line.find(')', open_paren);
-            size_t open_brace = line.find('{', close_paren);
-            if (open_paren != std::string::npos && close_paren != std::string::npos && open_brace != std::string::npos) {
+            if (open_paren != std::string::npos && close_paren != std::string::npos) {
                 size_t kw_len = (line.rfind("fn ", 0) == 0) ? 3 : ((line.rfind("def ", 0) == 0) ? 4 : 9);
                 std::string fname = line.substr(kw_len, open_paren - kw_len);
                 fname.erase(0, fname.find_first_not_of(" \t"));
@@ -120,8 +175,19 @@ void runScript(const std::string& code) {
 
                 size_t end_ip = findMatchingBlockEnd(lines, ip);
                 std::vector<std::string> body_stmts;
-                for (size_t k = ip + 1; k < end_ip && k < lines.size(); ++k) {
-                    body_stmts.push_back(lines[k]);
+                if (end_ip != std::string::npos) {
+                    for (size_t k = ip + 1; k < end_ip && k < lines.size(); ++k) {
+                        body_stmts.push_back(lines[k]);
+                    }
+                    ip = end_ip + 1;
+                } else {
+                    // Fallback to searching for 'end' line if block doesn't use braces
+                    size_t k = ip + 1;
+                    while (k < lines.size() && lines[k] != "end") {
+                        body_stmts.push_back(lines[k]);
+                        k++;
+                    }
+                    ip = k + 1;
                 }
 
                 user_script_funcs.erase(std::remove_if(user_script_funcs.begin(), user_script_funcs.end(), [&](const CustomScriptFunc& f){
@@ -132,7 +198,6 @@ void runScript(const std::string& code) {
                 if (std::find(autocomplete_words.begin(), autocomplete_words.end(), fname + "(") == autocomplete_words.end()) {
                     autocomplete_words.push_back(fname + "(");
                 }
-                ip = end_ip + 1;
                 continue;
             }
         }
@@ -166,12 +231,12 @@ void runScript(const std::string& code) {
         // sleep(ms)
         else if (line.rfind("sleep(", 0) == 0 && line.back() == ')') {
             std::string ms_str = line.substr(6, line.size() - 7);
-            try {
-                int ms = std::stoi(ms_str);
-                #ifdef ARDUINO
+            int ms = std::atoi(ms_str.c_str());
+            if (ms > 0) {
+                #if defined(ARDUINO) || defined(ESP32) || defined(ESP_PLATFORM)
                 delay(ms);
                 #endif
-            } catch (...) {}
+            }
             ip++;
         }
         // if (cond) {
@@ -192,17 +257,7 @@ void runScript(const std::string& code) {
                         cond_val = evaluate(prep_cond, err);
                     }
                     bool cond_bool = (err.empty() && !std::isnan(cond_val) && cond_val != 0.0);
-                    if (cond_str.find("X[z]") != std::string::npos || cond_str.find("X[i]") != std::string::npos || cond_str.find("c ==") != std::string::npos) {
-                        std::string z_err;
-                        double z_val = evaluate("z", z_err);
-                        double i_val = evaluate("i", z_err);
-                        double t_val = evaluate("t", z_err);
-                        if (t_val == 1.0) {
-                            std::string args_str = "";
-                            for (const auto& a : user_args) args_str += a.name + "=" + std::to_string(a.val) + " ";
-                            printf("[IF DBG t=1] line='%s' prep='%s' z=%.0f i=%.0f args='%s'\n", line.c_str(), prep_cond.c_str(), z_val, i_val, args_str.c_str());
-                        }
-                    }
+
                     
                     if (!err.empty()) {
                         script_console_output.push_back("L:" + std::to_string(ip + 1) + " Err: " + err);
@@ -371,6 +426,33 @@ void runScript(const std::string& code) {
                     trim(init_str);
                     trim(cond_str);
                     trim(step_str);
+                    if (step_str.size() > 2 && step_str.substr(0, 2) == "++") {
+                        std::string var = step_str.substr(2);
+                        trim(var);
+                        step_str = var + " = " + var + " + 1";
+                    } else if (step_str.size() > 2 && step_str.substr(0, 2) == "--") {
+                        std::string var = step_str.substr(2);
+                        trim(var);
+                        step_str = var + " = " + var + " - 1";
+                    } else if (step_str.size() > 2 && step_str.substr(step_str.size() - 2) == "++") {
+                        std::string var = step_str.substr(0, step_str.size() - 2);
+                        trim(var);
+                        step_str = var + " = " + var + " + 1";
+                    } else if (step_str.size() > 2 && step_str.substr(step_str.size() - 2) == "--") {
+                        std::string var = step_str.substr(0, step_str.size() - 2);
+                        trim(var);
+                        step_str = var + " = " + var + " - 1";
+                    } else if (size_t plus_eq = step_str.find("+="); plus_eq != std::string::npos) {
+                        std::string var = step_str.substr(0, plus_eq);
+                        std::string val = step_str.substr(plus_eq + 2);
+                        trim(var); trim(val);
+                        step_str = var + " = " + var + " + (" + val + ")";
+                    } else if (size_t minus_eq = step_str.find("-="); minus_eq != std::string::npos) {
+                        std::string var = step_str.substr(0, minus_eq);
+                        std::string val = step_str.substr(minus_eq + 2);
+                        trim(var); trim(val);
+                        step_str = var + " = " + var + " - (" + val + ")";
+                    }
                     
                     size_t end_ip = found_block ? blocks[block_idx].end_ip : findMatchingBlockEnd(lines, ip);
                     if (end_ip != std::string::npos) {
@@ -520,7 +602,9 @@ void runScript(const std::string& code) {
                         ip = curr.start_ip;
                     } else { // "if"
                         blocks.erase(blocks.begin() + match_idx);
-                        ip++;
+                        if (isBlockEnd(line)) {
+                            ip++;
+                        }
                     }
                 } else {
                     ip++;
@@ -557,16 +641,21 @@ void runScript(const std::string& code) {
             } else {
                 std::string err;
                 double idx_val = evaluate(preprocessArrayLookups(idx_expr, err), err);
-                double val_val = evaluate(preprocessArrayLookups(val_expr, err), err);
                 if (!err.empty()) {
                     script_console_output.push_back("L:" + std::to_string(ip + 1) + " Err: " + err);
                 } else {
-                    int idx = (int)std::round(idx_val);
-                    auto& arr = user_arrays[name];
-                    if (idx < 1 || idx > (int)arr.size()) {
-                        script_console_output.push_back("L:" + std::to_string(ip + 1) + " Err: Index " + std::to_string(idx) + " out of bounds");
+                    err.clear();
+                    double val_val = evaluate(preprocessArrayLookups(val_expr, err), err);
+                    if (!err.empty()) {
+                        script_console_output.push_back("L:" + std::to_string(ip + 1) + " Err: " + err);
                     } else {
-                        arr[idx - 1] = val_val;
+                        int idx = (int)std::round(idx_val);
+                        auto& arr = user_arrays[name];
+                        if (idx < 1 || idx > (int)arr.size()) {
+                            script_console_output.push_back("L:" + std::to_string(ip + 1) + " Err: Index " + std::to_string(idx) + " out of bounds");
+                        } else {
+                            arr[idx - 1] = val_val;
+                        }
                     }
                 }
                 ip++;
@@ -585,6 +674,133 @@ void runScript(const std::string& code) {
             lhs.erase(lhs.find_last_not_of(" \t") + 1);
             rhs.erase(0, rhs.find_first_not_of(" \t"));
             rhs.erase(rhs.find_last_not_of(" \t") + 1);
+            
+            // Check if LHS contains multiple variables separated by commas (tuple assignment e.g. x, y = fn())
+            if (lhs.find(',') != std::string::npos) {
+                std::vector<std::string> lhs_vars;
+                size_t v_pos = 0;
+                while (v_pos < lhs.size()) {
+                    size_t comma = lhs.find(',', v_pos);
+                    std::string v = (comma == std::string::npos) ? lhs.substr(v_pos) : lhs.substr(v_pos, comma - v_pos);
+                    v.erase(0, v.find_first_not_of(" \t"));
+                    v.erase(v.find_last_not_of(" \t") + 1);
+                    if (!v.empty()) lhs_vars.push_back(v);
+                    if (comma == std::string::npos) break;
+                    v_pos = comma + 1;
+                }
+                
+                // Evaluate RHS expression
+                bool is_arr = false;
+                std::string parse_err;
+                std::vector<double> vals;
+                
+                // Check if RHS is a custom script function call
+                size_t open_p = rhs.find('(');
+                bool executed_fn = false;
+                if (open_p != std::string::npos && rhs.back() == ')') {
+                    std::string fn_name = rhs.substr(0, open_p);
+                    fn_name.erase(0, fn_name.find_first_not_of(" \t"));
+                    fn_name.erase(fn_name.find_last_not_of(" \t") + 1);
+                    for (const auto& sf : user_script_funcs) {
+                        if (sf.name == fn_name) {
+                            std::string args_str = rhs.substr(open_p + 1, rhs.size() - open_p - 2);
+                            std::vector<std::string> arg_exprs;
+                            size_t a_pos = 0;
+                            while (a_pos < args_str.size()) {
+                                size_t comma = args_str.find(',', a_pos);
+                                std::string a_e = (comma == std::string::npos) ? args_str.substr(a_pos) : args_str.substr(a_pos, comma - a_pos);
+                                a_e.erase(0, a_e.find_first_not_of(" \t"));
+                                a_e.erase(a_e.find_last_not_of(" \t") + 1);
+                                if (!a_e.empty()) arg_exprs.push_back(a_e);
+                                if (comma == std::string::npos) break;
+                                a_pos = comma + 1;
+                            }
+                            
+                            for (size_t p_i = 0; p_i < sf.params.size() && p_i < arg_exprs.size(); ++p_i) {
+                                std::string eval_err;
+                                double val = evaluate(preprocessArrayLookups(arg_exprs[p_i], eval_err), eval_err);
+                                bool found = false;
+                                for (auto& ua : user_args) {
+                                    if (ua.name == sf.params[p_i]) { ua.val = val; found = true; break; }
+                                }
+                                if (!found) user_args.push_back({sf.params[p_i], val});
+                            }
+                            
+                            for (const auto& stmt : sf.statements) {
+                                if (stmt.rfind("return", 0) == 0) {
+                                    std::string ret_expr = (stmt.size() > 6) ? stmt.substr(6) : "0";
+                                    ret_expr.erase(0, ret_expr.find_first_not_of(" \t"));
+                                    ret_expr.erase(ret_expr.find_last_not_of(" \t") + 1);
+                                    
+                                    std::vector<std::string> ret_parts;
+                                    std::string current_part = "";
+                                    int p_depth = 0, b_depth = 0;
+                                    for (size_t c_i = 0; c_i < ret_expr.size(); ++c_i) {
+                                        char ch = ret_expr[c_i];
+                                        if (ch == '(') p_depth++;
+                                        else if (ch == ')') { if (p_depth > 0) p_depth--; }
+                                        else if (ch == '[') b_depth++;
+                                        else if (ch == ']') { if (b_depth > 0) b_depth--; }
+                                        
+                                        if (ch == ',' && p_depth == 0 && b_depth == 0) {
+                                            ret_parts.push_back(current_part);
+                                            current_part = "";
+                                        } else {
+                                            current_part += ch;
+                                        }
+                                    }
+                                    if (!current_part.empty()) ret_parts.push_back(current_part);
+                                    
+                                    for (const auto& part : ret_parts) {
+                                        std::string eval_err;
+                                        double v = evaluate(preprocessArrayLookups(part, eval_err), eval_err);
+                                        vals.push_back(v);
+                                    }
+                                    break;
+                                } else {
+                                    bool isDef = false;
+                                    std::string eval_err;
+                                    evaluateInput(preprocessArrayLookups(stmt, eval_err), eval_err, isDef);
+                                }
+                            }
+                            executed_fn = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!executed_fn) {
+                    vals = parseArrayExpr(rhs, is_arr, parse_err);
+                    if (!is_arr || !parse_err.empty()) {
+                        std::string eval_err;
+                        double single_v = evaluate(preprocessArrayLookups(preprocessLen(rhs), eval_err), eval_err);
+                        vals = {single_v};
+                    }
+                }
+                
+                for (size_t var_i = 0; var_i < lhs_vars.size(); ++var_i) {
+                    const std::string& var_name = lhs_vars[var_i];
+                    double val = (var_i < vals.size()) ? vals[var_i] : 0.0;
+                    user_arrays.erase(var_name);
+                    bool found = false;
+                    for (auto& a : user_args) {
+                        if (a.name == var_name) {
+                            a.val = val;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        user_args.push_back({var_name, val});
+                    }
+                    if (std::find(autocomplete_words.begin(), autocomplete_words.end(), var_name) == autocomplete_words.end()) {
+                        autocomplete_words.push_back(var_name);
+                    }
+                }
+                if (script_has_returned) break;
+                ip++;
+                continue;
+            }
             
             bool is_const_assign = false;
             for (const auto& cn : user_consts) {
@@ -661,7 +877,7 @@ void runScript(const std::string& code) {
                     // Pre-expand len() so that expressions like len(Y) become scalars
                     // before we scan rhs for array variable references.
                     std::string len_err;
-                    std::string rhs_prepped = preprocessLen(preprocessArrayLookups(rhs, len_err));
+                    std::string rhs_prepped = preprocessVectorStats(preprocessArrayLookups(preprocessLen(rhs), len_err));
                     // Check if rhs references a user array by name (e.g., "sin(x)" where x is array).
                     // If so, evaluate the expression element-wise substituting each array value.
                     std::string source_arr_name;
@@ -739,7 +955,7 @@ void runScript(const std::string& code) {
                             }
                         } else {
                             std::string eval_err;
-                            double val = evaluate(preprocessLen(preprocessArrayLookups(rhs, eval_err)), eval_err);
+                            double val = evaluate(preprocessArrayLookups(preprocessLen(rhs), eval_err), eval_err);
                             if (!eval_err.empty()) {
                                 script_console_output.push_back("L:" + std::to_string(ip + 1) + " Err: " + eval_err);
                             } else {
@@ -762,7 +978,7 @@ void runScript(const std::string& code) {
                         }
                     } else {
                         std::string eval_err;
-                        std::string prep_rhs = preprocessLen(preprocessArrayLookups(rhs, eval_err));
+                        std::string prep_rhs = preprocessArrayLookups(preprocessLen(rhs), eval_err);
                         double val = evaluate(prep_rhs, eval_err);
                         if (!eval_err.empty()) {
                             script_console_output.push_back("L:" + std::to_string(ip + 1) + " Err: " + eval_err);
@@ -799,12 +1015,113 @@ void runScript(const std::string& code) {
                     }
                 }
             } else {
-                bool isDef = false;
-                std::string eval_err;
-                evaluateInput(preprocessArrayLookups(line, eval_err), eval_err, isDef);
-                if (script_has_returned) break;
-                if (!eval_err.empty()) {
-                    script_console_output.push_back("L:" + std::to_string(ip + 1) + " Err: " + eval_err);
+                // Check if line is a custom script function call: e.g., func(arg1, arg2)
+                size_t open_p = line.find('(');
+                bool executed_custom = false;
+                if (open_p != std::string::npos && line.back() == ')') {
+                    std::string fn_name = line.substr(0, open_p);
+                    fn_name.erase(0, fn_name.find_first_not_of(" \t"));
+                    fn_name.erase(fn_name.find_last_not_of(" \t") + 1);
+                    
+                    for (const auto& sf : user_script_funcs) {
+                        if (sf.name == fn_name) {
+                            std::string args_str = line.substr(open_p + 1, line.size() - open_p - 2);
+                            std::vector<std::string> arg_exprs;
+                            size_t a_pos = 0;
+                            while (a_pos < args_str.size()) {
+                                size_t comma = args_str.find(',', a_pos);
+                                std::string a_e = (comma == std::string::npos) ? args_str.substr(a_pos) : args_str.substr(a_pos, comma - a_pos);
+                                a_e.erase(0, a_e.find_first_not_of(" \t"));
+                                a_e.erase(a_e.find_last_not_of(" \t") + 1);
+                                if (!a_e.empty()) arg_exprs.push_back(a_e);
+                                if (comma == std::string::npos) break;
+                                a_pos = comma + 1;
+                            }
+                            
+                            auto old_args = user_args;
+                            for (size_t p_i = 0; p_i < sf.params.size() && p_i < arg_exprs.size(); ++p_i) {
+                                std::string eval_err;
+                                double val = evaluate(preprocessArrayLookups(arg_exprs[p_i], eval_err), eval_err);
+                                bool found = false;
+                                for (auto& ua : user_args) {
+                                    if (ua.name == sf.params[p_i]) { ua.val = val; found = true; break; }
+                                }
+                                if (!found) user_args.push_back({sf.params[p_i], val});
+                            }
+                            
+                            for (const auto& stmt : sf.statements) {
+                                if (stmt.rfind("return", 0) == 0) {
+                                    std::string ret_expr = (stmt.size() > 6) ? stmt.substr(6) : "0";
+                                    ret_expr.erase(0, ret_expr.find_first_not_of(" \t"));
+                                    ret_expr.erase(ret_expr.find_last_not_of(" \t") + 1);
+                                    
+                                    std::vector<std::string> ret_parts;
+                                    std::string current_part = "";
+                                    int p_depth = 0, b_depth = 0;
+                                    for (size_t c_i = 0; c_i < ret_expr.size(); ++c_i) {
+                                        char ch = ret_expr[c_i];
+                                        if (ch == '(') p_depth++;
+                                        else if (ch == ')') { if (p_depth > 0) p_depth--; }
+                                        else if (ch == '[') b_depth++;
+                                        else if (ch == ']') { if (b_depth > 0) b_depth--; }
+                                        
+                                        if (ch == ',' && p_depth == 0 && b_depth == 0) {
+                                            ret_parts.push_back(current_part);
+                                            current_part = "";
+                                        } else {
+                                            current_part += ch;
+                                        }
+                                    }
+                                    if (!current_part.empty()) ret_parts.push_back(current_part);
+                                    
+                                    if (ret_parts.size() > 1) {
+                                        script_return_is_vec = true;
+                                        script_return_vec.clear();
+                                        for (size_t r_i = 0; r_i < ret_parts.size(); ++r_i) {
+                                            std::string part = ret_parts[r_i];
+                                            part.erase(0, part.find_first_not_of(" \t"));
+                                            part.erase(part.find_last_not_of(" \t") + 1);
+                                            std::string eval_err;
+                                            double v = evaluate(preprocessArrayLookups(part, eval_err), eval_err);
+                                            script_return_vec.push_back(v);
+                                        }
+                                        script_return_val = script_return_vec[0];
+                                    } else {
+                                        bool is_arr = false;
+                                        std::string parse_err;
+                                        std::vector<double> arr = parseArrayExpr(ret_expr, is_arr, parse_err);
+                                        if (is_arr && parse_err.empty()) {
+                                            script_return_is_vec = true;
+                                            script_return_vec = arr;
+                                            script_return_val = arr.empty() ? 0.0 : arr[0];
+                                        } else {
+                                            std::string eval_err;
+                                            script_return_val = evaluate(preprocessArrayLookups(ret_expr, eval_err), eval_err);
+                                            script_return_is_vec = false;
+                                            script_return_vec = {script_return_val};
+                                        }
+                                    }
+                                    break;
+                                } else {
+                                    bool isDef = false;
+                                    std::string eval_err;
+                                    evaluateInput(preprocessArrayLookups(stmt, eval_err), eval_err, isDef);
+                                }
+                            }
+                            executed_custom = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!executed_custom) {
+                    bool isDef = false;
+                    std::string eval_err;
+                    evaluateInput(preprocessArrayLookups(line, eval_err), eval_err, isDef);
+                    if (script_has_returned) break;
+                    if (!eval_err.empty()) {
+                        script_console_output.push_back("L:" + std::to_string(ip + 1) + " Err: " + eval_err);
+                    }
                 }
             }
             ip++;

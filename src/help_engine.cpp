@@ -162,7 +162,7 @@ void getHelpPopupData(AppState state, bool script_edit_mode, std::string& out_ti
             if (script_edit_mode) {
                 out_title += "Script Editor";
                 out_lines = {
-                    "Fn+Enter: Run script & output",
+                    "Fn+Enter / Fn+R: Save & Run",
                     "Enter: Insert new line",
                     "Tab: Autocomplete words",
                     "Ctrl+Left/Right: Jump word",

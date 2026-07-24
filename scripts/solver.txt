@@ -1,0 +1,57 @@
+# Equation Solver Script for Cardulator (M5Cardputer)
+print("=== Equation Solver ===")
+
+# 1. Quadratic Equation Solver: ax^2 + bx + c = 0
+a = 1
+b = -5
+c = 6
+print("Solving {a}x^2 + ({b})x + ({c}) = 0...")
+
+D = b^2 - 4 * a * c
+if (D > 0) {
+    x1 = (-b + sqrt(D)) / (2 * a)
+    x2 = (-b - sqrt(D)) / (2 * a)
+    print("Roots: x1 = {x1}, x2 = {x2}")
+} else if (D == 0) {
+    x1 = -b / (2 * a)
+    print("Single root: x = {x1}")
+} else {
+    real_part = -b / (2 * a)
+    imag_part = sqrt(-D) / (2 * a)
+    print("Complex roots: {real_part} +/- {imag_part}i")
+}
+
+# 2. Numerical Root Finder (Bisection Method for f(x) = x^3 - x - 2 = 0)
+print("Finding root for x^3 - x - 2 = 0 on [1, 2]...")
+left = 1.0
+right = 2.0
+tol = 0.0001
+max_steps = 30
+step = 0
+root = left
+
+f_left = left^3 - left - 2
+f_right = right^3 - right - 2
+
+if (f_left * f_right > 0) {
+    print("Error: Bad interval")
+} else {
+    while (step < max_steps) {
+        root = (left + right) / 2
+        f_mid = root^3 - root - 2
+
+        if (abs(f_mid) < tol) {
+            step = max_steps
+        } else {
+            if (f_left * f_mid < 0) {
+                right = root
+                f_right = f_mid
+            } else {
+                left = root
+                f_left = f_mid
+            }
+        }
+        step++
+    }
+    print("Root: x = {root}")
+}

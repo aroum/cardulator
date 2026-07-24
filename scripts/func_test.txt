@@ -1,0 +1,11 @@
+# Test script for functions def with multiple returns
+
+def stats(a, b) {
+    s = a + b
+    d = a - b
+    m = a * b
+    return s, d, m
+}
+
+x, y, z = stats(10, 4)
+print("Sum={x}, Diff={y}, Prod={z}")

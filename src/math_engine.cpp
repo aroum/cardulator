@@ -341,18 +341,13 @@ inline std::string preprocessExpression(const std::string& s) {
                             }
                         }
                         if (c == 'k' && dec_part.size() == 2) {
-                            try {
-                                double base_val = std::stod(num);
-                                double dec_val = std::stod(dec_part);
-                                double total = base_val * 1000.0 + dec_val;
-                                // replace the appended num in res with total
-                                res.erase(res.size() - num.size());
-                                std::ostringstream oss;
-                                oss << total;
-                                res += oss.str();
-                            } catch (...) {
-                                res += "." + dec_part + " * " + mult;
-                            }
+                            double base_val = std::atof(num.c_str());
+                            double dec_val = std::atof(dec_part.c_str());
+                            double total = base_val * 1000.0 + dec_val;
+                            res.erase(res.size() - num.size());
+                            std::ostringstream oss;
+                            oss << total;
+                            res += oss.str();
                         } else {
                             if (!dec_part.empty()) {
                                 res += "." + dec_part;
@@ -767,7 +762,7 @@ inline std::string preprocessLen(const std::string& s) {
 }
 
 std::string preprocessVectorStats(const std::string& s) {
-    static const std::vector<std::string> funcs = {"mean", "median", "mode", "var", "std"};
+    static const std::vector<std::string> funcs = {"mean", "median", "mode", "var", "std", "sum", "min", "max"};
     std::string res = s;
 
     // 1. Process 2-argument vector function: dot(A, B)
@@ -812,7 +807,7 @@ std::string preprocessVectorStats(const std::string& s) {
         }
     }
 
-    // 2. Process 1-argument vector stats functions (mean, median, mode, var, std)
+    // 2. Process 1-argument vector stats functions (mean, median, mode, var, std, sum, min, max)
     for (const auto& fname : funcs) {
         std::string target = fname + "(";
         size_t fpos = 0;
@@ -846,6 +841,18 @@ std::string preprocessVectorStats(const std::string& s) {
                     double sum = 0.0;
                     for (double v : vec) sum += v;
                     computed_val = sum / vec.size();
+                } else if (fname == "sum") {
+                    double sum = 0.0;
+                    for (double v : vec) sum += v;
+                    computed_val = sum;
+                } else if (fname == "min") {
+                    double m = vec[0];
+                    for (double v : vec) if (v < m) m = v;
+                    computed_val = m;
+                } else if (fname == "max") {
+                    double m = vec[0];
+                    for (double v : vec) if (v > m) m = v;
+                    computed_val = m;
                 } else if (fname == "median") {
                     std::vector<double> sorted = vec;
                     std::sort(sorted.begin(), sorted.end());
@@ -938,8 +945,11 @@ double evaluate(const std::string& expr_str, std::string& err) {
     }
     
     // 3. Register history variables (e1, e2, e3...)
-    for (size_t i = 0; i < history.size(); ++i) {
-        tep.add_variable_or_function(te_variable{"e" + std::to_string(i + 1), &history[i]});
+    if (!history.empty() && preprocessed.find('e') != std::string::npos) {
+        size_t start_h = (history.size() > 30) ? (history.size() - 30) : 0;
+        for (size_t i = start_h; i < history.size(); ++i) {
+            tep.add_variable_or_function(te_variable{"e" + std::to_string(i + 1), &history[i]});
+        }
     }
     
     // 4. Built-in functions
@@ -1241,7 +1251,32 @@ void handleTabCompletion(std::string& expression, int& cursor_pos) {
             if (!fname.empty()) check_candidate(fname);
         }
     }
+    for (const auto& sf : user_script_funcs) {
+        check_candidate(sf.name + "(");
+    }
     for (const auto& cn : user_consts) check_candidate(cn.name);
+
+    // Extract identifiers (variable/function names) from expression
+    {
+        std::string token = "";
+        for (size_t i = 0; i <= expression.size(); ++i) {
+            char c = (i < expression.size()) ? expression[i] : ' ';
+            if (std::isalnum(c) || c == '_') {
+                token += c;
+            } else {
+                if (!token.empty()) {
+                    if (!std::isdigit(token[0])) {
+                        if (c == '(') {
+                            check_candidate(token + "(");
+                        } else {
+                            check_candidate(token);
+                        }
+                    }
+                    token.clear();
+                }
+            }
+        }
+    }
 
     if (matches.empty()) {
         orig_prefix = "";
@@ -1328,6 +1363,23 @@ std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::
     trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
     
     if (trimmed.empty()) return {};
+
+    while (trimmed.size() >= 2 && trimmed.front() == '(' && trimmed.back() == ')') {
+        int nesting = 0;
+        bool valid = true;
+        for (size_t i = 0; i < trimmed.size() - 1; ++i) {
+            if (trimmed[i] == '(') nesting++;
+            else if (trimmed[i] == ')') nesting--;
+            if (nesting == 0) { valid = false; break; }
+        }
+        if (valid) {
+            trimmed = trimmed.substr(1, trimmed.size() - 2);
+            trimmed.erase(0, trimmed.find_first_not_of(" \t"));
+            trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
+        } else {
+            break;
+        }
+    }
     
     bool is_scalar_var = false;
     for (const auto& ua : user_args) {
@@ -1391,6 +1443,50 @@ std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::
             std::string sub_err;
             std::vector<double> arg_vec = parseArrayExpr(arg_str, is_arg_arr, sub_err);
             if (is_arg_arr && sub_err.empty()) {
+                if (func_name == "len") {
+                    is_array = false;
+                    return {(double)arg_vec.size()};
+                } else if (func_name == "mean") {
+                    is_array = false;
+                    double sum = 0.0;
+                    for (double v : arg_vec) sum += v;
+                    return {arg_vec.empty() ? 0.0 : sum / arg_vec.size()};
+                } else if (func_name == "sum") {
+                    is_array = false;
+                    double sum = 0.0;
+                    for (double v : arg_vec) sum += v;
+                    return {sum};
+                } else if (func_name == "min") {
+                    is_array = false;
+                    if (arg_vec.empty()) return {0.0};
+                    double m = arg_vec[0];
+                    for (double v : arg_vec) if (v < m) m = v;
+                    return {m};
+                } else if (func_name == "max") {
+                    is_array = false;
+                    if (arg_vec.empty()) return {0.0};
+                    double m = arg_vec[0];
+                    for (double v : arg_vec) if (v > m) m = v;
+                    return {m};
+                } else if (func_name == "median") {
+                    is_array = false;
+                    if (arg_vec.empty()) return {0.0};
+                    std::vector<double> sorted = arg_vec;
+                    std::sort(sorted.begin(), sorted.end());
+                    size_t sz = sorted.size();
+                    if (sz % 2 == 0) return {(sorted[sz/2 - 1] + sorted[sz/2]) / 2.0};
+                    else return {sorted[sz/2]};
+                } else if (func_name == "std" || func_name == "var") {
+                    is_array = false;
+                    if (arg_vec.empty()) return {0.0};
+                    double sum = 0.0;
+                    for (double v : arg_vec) sum += v;
+                    double m = sum / arg_vec.size();
+                    double vsum = 0.0;
+                    for (double v : arg_vec) vsum += (v - m) * (v - m);
+                    double var_v = (arg_vec.size() > 1) ? vsum / (arg_vec.size() - 1) : 0.0;
+                    return {(func_name == "std") ? std::sqrt(var_v) : var_v};
+                }
                 is_array = true;
                 std::vector<double> res(arg_vec.size());
                 for (size_t i = 0; i < arg_vec.size(); ++i) {
@@ -1398,17 +1494,30 @@ std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::
                     if (func_name == "cos") res[i] = custom_cos(val);
                     else if (func_name == "sin") res[i] = custom_sin(val);
                     else if (func_name == "tan") res[i] = custom_tan(val);
+                    else if (func_name == "ctan" || func_name == "cot") res[i] = custom_ctan(val);
+                    else if (func_name == "asin") res[i] = custom_asin(val);
+                    else if (func_name == "acos") res[i] = custom_acos(val);
+                    else if (func_name == "atan") res[i] = custom_atan(val);
+                    else if (func_name == "sinh") res[i] = sinh(val);
+                    else if (func_name == "cosh") res[i] = cosh(val);
+                    else if (func_name == "tanh") res[i] = tanh(val);
+                    else if (func_name == "asinh") res[i] = asinh(val);
+                    else if (func_name == "acosh") res[i] = acosh(val);
+                    else if (func_name == "atanh") res[i] = atanh(val);
                     else if (func_name == "sqrt") res[i] = sqrt(val);
                     else if (func_name == "cbrt") res[i] = cbrt(val);
                     else if (func_name == "abs") res[i] = fabs(val);
                     else if (func_name == "exp") res[i] = exp(val);
                     else if (func_name == "ln" || func_name == "log") res[i] = log(val);
                     else if (func_name == "log10") res[i] = log10(val);
+                    else if (func_name == "log2") res[i] = log2(val);
                     else if (func_name == "deg2rad" || func_name == "d2r") res[i] = custom_deg2rad(val);
                     else if (func_name == "rad2deg" || func_name == "r2d") res[i] = custom_rad2deg(val);
                     else if (func_name == "floor") res[i] = floor(val);
                     else if (func_name == "ceil") res[i] = ceil(val);
                     else if (func_name == "round") res[i] = round(val);
+                    else if (func_name == "trunc") res[i] = trunc(val);
+                    else if (func_name == "sgn") res[i] = (val > 0.0 ? 1.0 : (val < 0.0 ? -1.0 : 0.0));
                     else res[i] = val;
                 }
                 return res;
@@ -1616,6 +1725,23 @@ std::vector<double> evaluateArrayBinaryOp(const std::string& op1_str, const std:
         return res;
     }
     
+    else if (!is_op1_arr && !is_op2_arr) {
+        if (op1_str.empty() && op_str == "-") {
+            is_scalar_result = true;
+            scalar_val = -op2_scalar;
+            return {};
+        }
+        if (op_str == "+") { is_scalar_result = true; scalar_val = op1_scalar + op2_scalar; return {}; }
+        if (op_str == "-") { is_scalar_result = true; scalar_val = op1_scalar - op2_scalar; return {}; }
+        if (op_str == "*" || op_str == ".*") { is_scalar_result = true; scalar_val = op1_scalar * op2_scalar; return {}; }
+        if (op_str == "/" || op_str == "./") {
+            if (op2_scalar == 0.0) { err = "Division by zero"; return {}; }
+            is_scalar_result = true;
+            scalar_val = op1_scalar / op2_scalar;
+            return {};
+        }
+    }
+    
     err = "No arrays in array op";
     return {};
 }
@@ -1636,29 +1762,35 @@ std::string formatPrintString(const std::string& str, std::string& err) {
                 expr.erase(0, expr.find_first_not_of(" \t"));
                 expr.erase(expr.find_last_not_of(" \t") + 1);
 
-                bool is_scalar = false;
+                bool found_scalar = false;
                 for (const auto& ua : user_args) {
-                    if (ua.name == expr) { is_scalar = true; break; }
+                    if (ua.name == expr) {
+                        res += fmtNum(ua.val);
+                        found_scalar = true;
+                        break;
+                    }
                 }
 
-                if (!is_scalar && user_arrays.find(expr) != user_arrays.end()) {
-                    const auto& arr = user_arrays[expr];
-                    std::string arr_str = "[";
-                    for (size_t k = 0; k < arr.size(); ++k) {
-                        arr_str += fmtNum(arr[k]);
-                        if (k + 1 < arr.size()) arr_str += ", ";
+                if (!found_scalar) {
+                    if (user_arrays.find(expr) != user_arrays.end()) {
+                        const auto& arr = user_arrays[expr];
+                        std::string arr_str = "[";
+                        for (size_t k = 0; k < arr.size(); ++k) {
+                            arr_str += fmtNum(arr[k]);
+                            if (k + 1 < arr.size()) arr_str += ", ";
+                        }
+                        arr_str += "]";
+                        res += arr_str;
+                    } else {
+                        std::string eval_err;
+                        std::string prep_expr = preprocessLen(preprocessArrayLookups(expr, eval_err));
+                        if (!eval_err.empty()) return str;
+                        
+                        double val = evaluate(prep_expr, eval_err);
+                        if (!eval_err.empty()) return str;
+                        
+                        res += fmtNum(val);
                     }
-                    arr_str += "]";
-                    res += arr_str;
-                } else {
-                    std::string eval_err;
-                    std::string prep_expr = preprocessLen(preprocessArrayLookups(expr, eval_err));
-                    if (!eval_err.empty()) return str;
-                    
-                    double val = evaluate(prep_expr, eval_err);
-                    if (!eval_err.empty()) return str;
-                    
-                    res += fmtNum(val);
                 }
                 i = close + 1;
             } else {

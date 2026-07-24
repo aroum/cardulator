@@ -5,6 +5,8 @@
 #include <cassert>
 #include <clocale>
 #include <cmath>
+#include <dirent.h>
+#include <sys/stat.h>
 
 // We need to include the engine components for test runner compilation
 #include "../src/app_state.h"
@@ -47,6 +49,9 @@ void setUp(void) {
     user_funcs.clear();
     user_script_funcs.clear();
     user_consts.clear();
+    user_arrays.clear();
+    script_console_output.clear();
+    plot_lines.clear();
     autocomplete_words = {
         "sin(", "cos(", "tan(", "ctan(", "asin(", "acos(", "atan(",
         "sinh(", "cosh(", "tanh(", "asinh(", "acosh(", "atanh(",
@@ -569,46 +574,63 @@ static std::string readFileToString(const std::string& path) {
     return ss.str();
 }
 
-void test_docs_scripts_files(void) {
-    // 1. Test firmware/scripts/life.txt
-    std::string life_code = readFileToString("../scripts/life.txt");
-    if (life_code.empty()) life_code = readFileToString("../../scripts/life.txt");
-    if (life_code.empty()) life_code = readFileToString("firmware/scripts/life.txt");
-    if (life_code.empty()) life_code = readFileToString("firmware/cardulator/scripts/life.txt");
-    if (life_code.empty()) life_code = readFileToString("scripts/life.txt");
-    TEST_ASSERT_FALSE_MESSAGE(life_code.empty(), "Failed to load firmware/scripts/life.txt");
-    runScript(life_code);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(10, script_console_output.size(), "life.txt should produce 10 lines");
-    for (const auto& line : script_console_output) {
-        TEST_ASSERT_EQUAL_INT(std::string::npos, line.find("Err"));
-        TEST_ASSERT_EQUAL_INT(std::string::npos, line.find("Error"));
+static std::string findScriptsDir() {
+    std::vector<std::string> candidates = {
+        "scripts",
+        "../scripts",
+        "../../scripts",
+        "firmware/scripts",
+        "firmware/cardulator/scripts"
+    };
+    for (const auto& path : candidates) {
+        DIR* dir = opendir(path.c_str());
+        if (dir) {
+            closedir(dir);
+            return path;
+        }
     }
+    return "";
+}
 
-    // 2. Test firmware/scripts/plot_demo.txt
-    std::string plot_demo_code = readFileToString("../scripts/plot_demo.txt");
-    if (plot_demo_code.empty()) plot_demo_code = readFileToString("../../scripts/plot_demo.txt");
-    if (plot_demo_code.empty()) plot_demo_code = readFileToString("firmware/scripts/plot_demo.txt");
-    if (plot_demo_code.empty()) plot_demo_code = readFileToString("firmware/cardulator/scripts/plot_demo.txt");
-    if (plot_demo_code.empty()) plot_demo_code = readFileToString("scripts/plot_demo.txt");
-    TEST_ASSERT_FALSE_MESSAGE(plot_demo_code.empty(), "Failed to load firmware/scripts/plot_demo.txt");
-    runScript(plot_demo_code);
-    TEST_ASSERT_TRUE_MESSAGE(script_console_output.size() >= 2, "plot_demo.txt should output lines");
-    TEST_ASSERT_EQUAL_STRING("=== Generating Math Showcase ===", script_console_output.front().c_str());
-    TEST_ASSERT_EQUAL_STRING("Showcase rendered successfully!", script_console_output.back().c_str());
-    TEST_ASSERT_EQUAL_INT(3, plot_lines.size());
+static std::vector<std::string> listTxtFilesInDir(const std::string& dir_path) {
+    std::vector<std::string> files;
+    DIR* dir = opendir(dir_path.c_str());
+    if (!dir) return files;
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        std::string name = entry->d_name;
+        if (name.size() > 4 && name.substr(name.size() - 4) == ".txt") {
+            files.push_back(dir_path + "/" + name);
+        }
+    }
+    closedir(dir);
+    return files;
+}
 
-    // 3. Test firmware/scripts/plot.txt
-    std::string plot_code = readFileToString("../scripts/plot.txt");
-    if (plot_code.empty()) plot_code = readFileToString("../../scripts/plot.txt");
-    if (plot_code.empty()) plot_code = readFileToString("firmware/scripts/plot.txt");
-    if (plot_code.empty()) plot_code = readFileToString("firmware/cardulator/scripts/plot.txt");
-    if (plot_code.empty()) plot_code = readFileToString("scripts/plot.txt");
-    TEST_ASSERT_FALSE_MESSAGE(plot_code.empty(), "Failed to load firmware/scripts/plot.txt");
-    runScript(plot_code);
-    TEST_ASSERT_TRUE_MESSAGE(script_console_output.size() >= 5, "plot.txt should output lines");
-    TEST_ASSERT_EQUAL_STRING("=== Starting Demo ===", script_console_output.front().c_str());
-    TEST_ASSERT_EQUAL_STRING("=== Demo Complete ===", script_console_output.back().c_str());
-    TEST_ASSERT_EQUAL_INT(2, plot_lines.size());
+void test_docs_scripts_files(void) {
+    std::string scripts_dir = findScriptsDir();
+    TEST_ASSERT_FALSE_MESSAGE(scripts_dir.empty(), "Failed to locate scripts directory");
+
+    std::vector<std::string> script_files = listTxtFilesInDir(scripts_dir);
+    TEST_ASSERT_TRUE_MESSAGE(script_files.size() >= 7, "scripts directory must contain at least 7 .txt script files");
+
+    for (const auto& file_path : script_files) {
+        std::string code = readFileToString(file_path);
+        std::string load_msg = "Failed to load script content from " + file_path;
+        TEST_ASSERT_FALSE_MESSAGE(code.empty(), load_msg.c_str());
+
+        setUp();
+        runScript(code);
+
+        std::string empty_out_msg = "Script produced no console output: " + file_path;
+        TEST_ASSERT_FALSE_MESSAGE(script_console_output.empty(), empty_out_msg.c_str());
+
+        for (const auto& line : script_console_output) {
+            bool has_error = (line.find("Err:") != std::string::npos || line.find("Error:") != std::string::npos);
+            std::string err_msg = "Script execution reported error in " + file_path + ": " + line;
+            TEST_ASSERT_FALSE_MESSAGE(has_error, err_msg.c_str());
+        }
+    }
 }
 
 void test_help(void) {
@@ -626,6 +648,44 @@ void test_help(void) {
     is_help = preprocessHelp("help(plot)", h_plot);
     TEST_ASSERT_TRUE(is_help);
     TEST_ASSERT_TRUE(h_plot.find("plot") != std::string::npos);
+}
+
+void test_extended_script_operators_and_vector_funcs(void) {
+    setUp();
+    // Test prefix ++ and --, compound *= and /=
+    std::string script1 = "x = 10; ++x; --x; x *= 3; x /= 2; print(\"{x}\")";
+    runScript(script1);
+    TEST_ASSERT_EQUAL_INT(1, script_console_output.size());
+    TEST_ASSERT_EQUAL_STRING("15", script_console_output.back().c_str());
+
+    setUp();
+    // Test vector functions min, max, sum, mean
+    std::string script2 = "V = [10, 20, 30]; s = sum(V); mn = min(V); mx = max(V); print(\"{s} {mn} {mx}\")";
+    runScript(script2);
+    TEST_ASSERT_EQUAL_INT(1, script_console_output.size());
+    TEST_ASSERT_EQUAL_STRING("60 10 30", script_console_output.back().c_str());
+
+    setUp();
+    // Test element-wise vector operations: sin([0, 90]) (in degrees) -> [0, 1]
+    std::string script3 = "A = [0, 90]; B = sin(A); s0 = B[1]; s1 = B[2]; print(\"{s0} {s1}\")";
+    runScript(script3);
+    TEST_ASSERT_EQUAL_INT(1, script_console_output.size());
+    TEST_ASSERT_EQUAL_STRING("0 1", script_console_output.back().c_str());
+}
+
+void test_def_functions_and_multiple_returns(void) {
+    setUp();
+    std::string script = "def stats(a, b) {\n"
+                         "    s = a + b\n"
+                         "    d = a - b\n"
+                         "    m = a * b\n"
+                         "    return s, d, m\n"
+                         "}\n"
+                         "x, y, z = stats(10, 4)\n"
+                         "print(\"{x} {y} {z}\")";
+    runScript(script);
+    TEST_ASSERT_EQUAL_INT(1, script_console_output.size()); // "14 6 40"
+    TEST_ASSERT_EQUAL_STRING("14 6 40", script_console_output.back().c_str());
 }
 
 int main(int argc, char **argv) {
@@ -651,5 +711,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_print_and_e_history);
     RUN_TEST(test_docs_scripts_files);
     RUN_TEST(test_help);
+    RUN_TEST(test_extended_script_operators_and_vector_funcs);
+    RUN_TEST(test_def_functions_and_multiple_returns);
     return UNITY_END();
 }

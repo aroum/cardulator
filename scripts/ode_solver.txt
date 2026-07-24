@@ -1,0 +1,30 @@
+# Differential Equation Solver (ODE) using RK4 (Runge-Kutta 4th Order)
+# Equation: dy/dx = x - y, with initial condition y(0) = 1
+print("=== ODE Solver (Runge-Kutta 4th Order) ===")
+print("Solving dy/dx = x - y, y(0) = 1...")
+
+x = 0.0
+y = 1.0
+h = 0.2
+steps = 10
+
+i = 0
+while (i <= steps) {
+    # Print step values
+    print("x = {x}, y = {y}")
+
+    # RK4 coefficients for f(x, y) = x - y
+    k1 = x - y
+    
+    x_half = x + 0.5 * h
+    k2 = x_half - (y + 0.5 * h * k1)
+    k3 = x_half - (y + 0.5 * h * k2)
+    
+    x_next = x + h
+    k4 = x_next - (y + h * k3)
+
+    # Calculate next y value
+    y = y + (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+    x = x_next
+    i++
+}

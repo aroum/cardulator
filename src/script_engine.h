@@ -58,7 +58,17 @@ inline std::vector<std::string> splitIntoStatements(const std::string& code) {
             str.erase(str.find_last_not_of(" \t\r") + 1);
         };
 
-        if (s.size() > 2 && s.substr(s.size() - 2) == "++") {
+        if (s.size() > 2 && s.substr(0, 2) == "++") {
+            std::string var = s.substr(2);
+            trim(var);
+            s = var + " = " + var + " + 1";
+        }
+        else if (s.size() > 2 && s.substr(0, 2) == "--") {
+            std::string var = s.substr(2);
+            trim(var);
+            s = var + " = " + var + " - 1";
+        }
+        else if (s.size() > 2 && s.substr(s.size() - 2) == "++") {
             std::string var = s.substr(0, s.size() - 2);
             trim(var);
             s = var + " = " + var + " + 1";
@@ -82,6 +92,20 @@ inline std::vector<std::string> splitIntoStatements(const std::string& code) {
             trim(val);
             s = var + " = " + var + " - (" + val + ")";
         }
+        else if (size_t mul_eq = s.find("*="); mul_eq != std::string::npos) {
+            std::string var = s.substr(0, mul_eq);
+            std::string val = s.substr(mul_eq + 2);
+            trim(var);
+            trim(val);
+            s = var + " = " + var + " * (" + val + ")";
+        }
+        else if (size_t div_eq = s.find("/="); div_eq != std::string::npos) {
+            std::string var = s.substr(0, div_eq);
+            std::string val = s.substr(div_eq + 2);
+            trim(var);
+            trim(val);
+            s = var + " = " + var + " / (" + val + ")";
+        }
         
         statements.push_back(s);
     };
@@ -104,7 +128,7 @@ inline std::vector<std::string> splitIntoStatements(const std::string& code) {
         } else if (!in_quotes && c == ')') {
             if (paren_depth > 0) paren_depth--;
             current_stmt += c;
-        } else if (c == '#' && !in_quotes) {
+        } else if ((c == '#' || (c == '/' && i + 1 < code.size() && code[i+1] == '/')) && !in_quotes) {
             while (i < code.size() && code[i] != '\n') {
                 i++;
             }
@@ -134,5 +158,7 @@ inline std::vector<std::string> splitIntoStatements(const std::string& code) {
 
 extern double script_return_val;
 extern bool script_has_returned;
+extern std::vector<double> script_return_vec;
+extern bool script_return_is_vec;
 
 void runScript(const std::string& code);

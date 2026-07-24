@@ -1,4 +1,8 @@
 #include <Arduino.h>
+#if defined(ESP32) || defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+SET_LOOP_TASK_STACK_SIZE(32768);
+#include <esp_task_wdt.h>
+#endif
 #include <M5Cardputer.h>
 #include <utility/Keyboard/KeyboardReader/IOMatrix.h>
 #include <utility/Keyboard/KeyboardReader/TCA8418.h>
@@ -55,6 +59,7 @@ bool degreesMode = true;
 bool use_thousands_sep = false;
 bool auto_brackets = true;
 bool sticky_mode = false;
+bool block_cursor = false;
 bool show_help_popup = false;
 
 static bool sticky_fn_active = false;
@@ -184,6 +189,7 @@ static void loadNVSData() {
     use_thousands_sep = preferences.getBool("thousands_sep", false);
     auto_brackets = preferences.getBool("auto_brackets", true);
     sticky_mode = preferences.getBool("sticky_mode", false);
+    block_cursor = preferences.getBool("block_cursor", false);
     
     // Load variables (user_args)
     std::string vars_str = preferences.getString("vars", ::String("")).c_str();
@@ -382,10 +388,12 @@ static void loadSDData() {
                     if (last_slash != std::string::npos) {
                         name = name.substr(last_slash + 1);
                     }
-                    if (name.size() > 4 && name.substr(name.size() - 4) == ".txt") {
+                    if (!name.empty() && name[0] != '.' && name.size() > 4 && name.substr(name.size() - 4) == ".txt") {
                         std::string script_name = name.substr(0, name.size() - 4);
-                        String content = file.readString();
-                        user_scripts.push_back({script_name, content.c_str()});
+                        if (!script_name.empty() && script_name[0] != '.') {
+                            String content = file.readString();
+                            user_scripts.push_back({script_name, content.c_str()});
+                        }
                     }
                 }
                 file = dir.openNextFile();
@@ -548,6 +556,7 @@ static void saveNVSData() {
     preferences.putBool("thousands_sep", use_thousands_sep);
     preferences.putBool("auto_brackets", auto_brackets);
     preferences.putBool("sticky_mode", sticky_mode);
+    preferences.putBool("block_cursor", block_cursor);
     
     preferences.end();
 }
@@ -1251,11 +1260,12 @@ static void drawVars() {
         M5Cardputer.Display.setCursor(10, y + 20);
         M5Cardputer.Display.print("No variables. Press 'N' to create.");
     } else {
+        int max_vis = var_edit_mode ? 6 : 8;
         int start = 0;
-        if (var_selected_idx >= 6) {
-            start = var_selected_idx - 5;
+        if (var_selected_idx >= max_vis) {
+            start = var_selected_idx - (max_vis - 1);
         }
-        for (int i = start; i < (int)total_vars && i < start + 6; ++i) {
+        for (int i = start; i < (int)total_vars && i < start + max_vis; ++i) {
             std::string name;
             double val = 0.0;
             if (i < (int)history.size()) {
@@ -1308,11 +1318,12 @@ static void drawConsts() {
         M5Cardputer.Display.setCursor(10, y + 20);
         M5Cardputer.Display.print("No constants. Press 'N' to create.");
     } else {
+        int max_vis = const_edit_mode ? 6 : 8;
         int start = 0;
-        if (const_selected_idx >= 6) {
-            start = const_selected_idx - 5;
+        if (const_selected_idx >= max_vis) {
+            start = const_selected_idx - (max_vis - 1);
         }
-        for (int i = start; i < (int)user_consts.size() && i < start + 6; ++i) {
+        for (int i = start; i < (int)user_consts.size() && i < start + max_vis; ++i) {
             if (i == const_selected_idx) {
                 M5Cardputer.Display.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
                 M5Cardputer.Display.setTextColor(TFT_WHITE);
@@ -1351,11 +1362,12 @@ static void drawBinds() {
         M5Cardputer.Display.setCursor(10, y + 20);
         M5Cardputer.Display.print("No binds. Press 'N' to create.");
     } else {
+        int max_vis = bind_edit_mode ? 6 : 8;
         int start = 0;
-        if (bind_selected_idx >= 6) {
-            start = bind_selected_idx - 5;
+        if (bind_selected_idx >= max_vis) {
+            start = bind_selected_idx - (max_vis - 1);
         }
-        for (int i = start; i < (int)user_binds.size() && i < start + 6; ++i) {
+        for (int i = start; i < (int)user_binds.size() && i < start + max_vis; ++i) {
             if (i == bind_selected_idx) {
                 M5Cardputer.Display.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
                 M5Cardputer.Display.setTextColor(TFT_WHITE);
@@ -1483,11 +1495,12 @@ static void drawFormulas() {
         M5Cardputer.Display.setTextColor(TFT_YELLOW);
         M5Cardputer.Display.print("Press [N] to create a formula.");
     } else {
+        int max_vis = 8;
         int start = 0;
-        if (formula_selected_idx >= 5) {
-            start = formula_selected_idx - 4;
+        if (formula_selected_idx >= max_vis) {
+            start = formula_selected_idx - (max_vis - 1);
         }
-        for (int i = start; i < (int)user_formulas.size() && i < start + 5; ++i) {
+        for (int i = start; i < (int)user_formulas.size() && i < start + max_vis; ++i) {
             int line_y = y + (i - start) * 14;
             if (i == formula_selected_idx) {
                 M5Cardputer.Display.fillRect(0, line_y - 1, SCR_W, 13, TFT_BLUE);
@@ -1658,6 +1671,9 @@ static void drawPlot() {
     }
 }
 
+static std::vector<std::string> cached_script_wrapped_output;
+static bool script_wrapped_output_dirty = true;
+
 static void drawScripts() {
     M5Cardputer.Display.fillScreen(TFT_BLACK);
     
@@ -1667,7 +1683,11 @@ static void drawScripts() {
         int max_lines = 7;
         M5Cardputer.Display.setTextSize(1);
         M5Cardputer.Display.setTextColor(TFT_WHITE);
-        std::vector<std::string> wrapped_output = wrapTextLines(script_console_output, 38);
+        if (script_wrapped_output_dirty) {
+            cached_script_wrapped_output = wrapTextLines(script_console_output, 38);
+            script_wrapped_output_dirty = false;
+        }
+        const auto& wrapped_output = cached_script_wrapped_output;
         int total = (int)wrapped_output.size();
         if (script_console_scroll_offset > total - 1) script_console_scroll_offset = std::max(0, total - 1);
         if (script_console_scroll_offset < 0) script_console_scroll_offset = 0;
@@ -1811,7 +1831,18 @@ static void drawScripts() {
             
             if (i == script_cursor_pos && in_viewport) {
                 int draw_row = row_ctr - script_scroll_row;
-                M5Cardputer.Display.drawFastVLine(start_x + col_ctr * 6, start_y + draw_row * line_height, 12, TFT_CYAN);
+                int cx = start_x + col_ctr * 6;
+                int cy = start_y + draw_row * line_height;
+                if (block_cursor) {
+                    M5Cardputer.Display.fillRect(cx, cy, 6, 12, TFT_CYAN);
+                    if (i < n_buf && script_edit_buf[i] != '\n') {
+                        M5Cardputer.Display.setCursor(cx, cy);
+                        M5Cardputer.Display.setTextColor(TFT_BLACK, TFT_CYAN);
+                        M5Cardputer.Display.print(script_edit_buf[i]);
+                    }
+                } else {
+                    M5Cardputer.Display.drawFastVLine(cx, cy, 12, TFT_CYAN);
+                }
             }
             
             if (i < n_buf) {
@@ -1820,7 +1851,7 @@ static void drawScripts() {
                     row_ctr++;
                     col_ctr = 0;
                 } else {
-                    if (in_viewport) {
+                    if (in_viewport && !(i == script_cursor_pos && block_cursor)) {
                         int draw_row = row_ctr - script_scroll_row;
                         M5Cardputer.Display.setCursor(start_x + col_ctr * 6, start_y + draw_row * line_height);
                         M5Cardputer.Display.setTextColor(char_colors[i]);
@@ -1848,11 +1879,12 @@ static void drawScripts() {
             M5Cardputer.Display.setCursor(10, y + 20);
             M5Cardputer.Display.print("No scripts available.");
         } else {
+            int visible_items = 8;
             int start = 0;
-            if (script_selected_idx >= 6) {
-                start = script_selected_idx - 5;
+            if (script_selected_idx >= visible_items) {
+                start = script_selected_idx - (visible_items - 1);
             }
-            for (int i = start; i < (int)user_scripts.size() && i < start + 6; ++i) {
+            for (int i = start; i < (int)user_scripts.size() && i < start + visible_items; ++i) {
                 if (i == script_selected_idx) {
                     M5Cardputer.Display.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
                     M5Cardputer.Display.setTextColor(TFT_WHITE);
@@ -1928,9 +1960,23 @@ inline int getLineEnd(const std::string& str, int pos) {
 
 inline int getPrevWordPos(const std::string& str, int pos) {
     if (pos <= 0) return 0;
-    int i = pos - 1;
-    while (i > 0 && std::isspace(str[i])) i--;
-    while (i > 0 && (std::isalnum(str[i - 1]) || str[i - 1] == '_')) i--;
+    int i = pos;
+
+    // If currently inside a word (char to the left is alphanumeric/underscore)
+    if (std::isalnum((unsigned char)str[i - 1]) || str[i - 1] == '_') {
+        while (i > 0 && (std::isalnum((unsigned char)str[i - 1]) || str[i - 1] == '_')) i--;
+        return i;
+    }
+
+    // Skip spaces to the left first
+    while (i > 0 && std::isspace((unsigned char)str[i - 1])) i--;
+    if (i <= 0) return 0;
+
+    if (std::isalnum((unsigned char)str[i - 1]) || str[i - 1] == '_') {
+        while (i > 0 && (std::isalnum((unsigned char)str[i - 1]) || str[i - 1] == '_')) i--;
+    } else {
+        while (i > 0 && !std::isalnum((unsigned char)str[i - 1]) && str[i - 1] != '_' && !std::isspace((unsigned char)str[i - 1])) i--;
+    }
     return i;
 }
 
@@ -1938,8 +1984,22 @@ inline int getNextWordPos(const std::string& str, int pos) {
     int n = str.size();
     if (pos >= n) return n;
     int i = pos;
-    while (i < n && (std::isalnum(str[i]) || str[i] == '_')) i++;
-    while (i < n && std::isspace(str[i])) i++;
+
+    // If currently inside or at start of a word
+    if (std::isalnum((unsigned char)str[i]) || str[i] == '_') {
+        while (i < n && (std::isalnum((unsigned char)str[i]) || str[i] == '_')) i++;
+        return i;
+    }
+
+    // Skip spaces to the right first
+    while (i < n && std::isspace((unsigned char)str[i])) i++;
+    if (i >= n) return n;
+
+    if (std::isalnum((unsigned char)str[i]) || str[i] == '_') {
+        while (i < n && (std::isalnum((unsigned char)str[i]) || str[i] == '_')) i++;
+    } else {
+        while (i < n && !std::isalnum((unsigned char)str[i]) && str[i] != '_' && !std::isspace((unsigned char)str[i])) i++;
+    }
     return i;
 }
 
@@ -3371,79 +3431,113 @@ static void drawParams() {
     M5Cardputer.Display.fillScreen(TFT_BLACK);
     drawStatusBar("Cardulator | PARAMETERS");
     
-    int y = 30;
+    int item_y[] = { 16, 34, 62, 79, 96, 113 };
+    int item_h[] = { 16, 26, 15, 15, 15, 15 };
     
+    static int param_scroll_y = 0;
+    int sel = param_selected_idx;
+    if (sel >= 0 && sel < 6) {
+        if (item_y[sel] - param_scroll_y < 16) {
+            param_scroll_y = item_y[sel] - 16;
+        } else if (item_y[sel] + item_h[sel] - param_scroll_y > 132) {
+            param_scroll_y = item_y[sel] + item_h[sel] - 132;
+        }
+    }
+    if (param_scroll_y < 0) param_scroll_y = 0;
+
+    auto getY = [&](int orig_y) {
+        return orig_y - param_scroll_y;
+    };
+
     // Setting 0: Screen Timeout
-    if (param_selected_idx == 0) {
-        M5Cardputer.Display.setTextColor(TFT_YELLOW);
-        M5Cardputer.Display.fillRect(0, y - 2, SCR_W, 16, 0x18E3 /* dark grey */);
-    } else {
-        M5Cardputer.Display.setTextColor(TFT_WHITE);
+    int y0 = getY(16);
+    if (y0 >= 14 && y0 < SCR_H) {
+        if (param_selected_idx == 0) {
+            M5Cardputer.Display.setTextColor(TFT_YELLOW);
+            M5Cardputer.Display.fillRect(0, y0 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+        } else {
+            M5Cardputer.Display.setTextColor(TFT_WHITE);
+        }
+        M5Cardputer.Display.setCursor(10, y0);
+        M5Cardputer.Display.printf("Screen Timeout: %d s", screen_off_timeout);
+        if (param_selected_idx == 0 && param_edit_mode) {
+            M5Cardputer.Display.setTextColor(TFT_CYAN);
+            M5Cardputer.Display.setCursor(160, y0);
+            M5Cardputer.Display.printf("[%s]", param_edit_buf.c_str());
+        }
     }
-    M5Cardputer.Display.setCursor(10, y);
-    M5Cardputer.Display.printf("Screen Timeout: %d s", screen_off_timeout);
-    if (param_selected_idx == 0 && param_edit_mode) {
-        M5Cardputer.Display.setTextColor(TFT_CYAN);
-        M5Cardputer.Display.setCursor(160, y);
-        M5Cardputer.Display.printf("[%s]", param_edit_buf.c_str());
-    }
-    
-    y += 20;
-    
+
     // Setting 1: Brightness
-    if (param_selected_idx == 1) {
-        M5Cardputer.Display.setTextColor(TFT_YELLOW);
-        M5Cardputer.Display.fillRect(0, y - 2, SCR_W, 16, 0x18E3 /* dark grey */);
-    } else {
-        M5Cardputer.Display.setTextColor(TFT_WHITE);
+    int y1 = getY(34);
+    if (y1 >= 14 && y1 < SCR_H) {
+        if (param_selected_idx == 1) {
+            M5Cardputer.Display.setTextColor(TFT_YELLOW);
+            M5Cardputer.Display.fillRect(0, y1 - 1, SCR_W, 25, 0x18E3 /* dark grey */);
+        } else {
+            M5Cardputer.Display.setTextColor(TFT_WHITE);
+        }
+        M5Cardputer.Display.setCursor(10, y1);
+        M5Cardputer.Display.printf("Brightness: %d", backlight_brightness);
+        if (param_selected_idx == 1 && param_edit_mode) {
+            M5Cardputer.Display.setTextColor(TFT_CYAN);
+            M5Cardputer.Display.setCursor(160, y1);
+            M5Cardputer.Display.printf("[%s]", param_edit_buf.c_str());
+        }
+        M5Cardputer.Display.drawRect(10, y1 + 14, 220, 8, TFT_WHITE);
+        M5Cardputer.Display.fillRect(11, y1 + 15, (backlight_brightness * 218) / 255, 6, TFT_GREEN);
     }
-    M5Cardputer.Display.setCursor(10, y);
-    M5Cardputer.Display.printf("Brightness: %d", backlight_brightness);
-    if (param_selected_idx == 1 && param_edit_mode) {
-        M5Cardputer.Display.setTextColor(TFT_CYAN);
-        M5Cardputer.Display.setCursor(160, y);
-        M5Cardputer.Display.printf("[%s]", param_edit_buf.c_str());
-    }
-    
-    // Draw visual progress bar for brightness
-    M5Cardputer.Display.drawRect(10, y + 16, 220, 8, TFT_WHITE);
-    M5Cardputer.Display.fillRect(11, y + 17, (backlight_brightness * 218) / 255, 6, TFT_GREEN);
-    
-    y += 30;
 
     // Setting 2: Thousands Separator
-    if (param_selected_idx == 2) {
-        M5Cardputer.Display.setTextColor(TFT_YELLOW);
-        M5Cardputer.Display.fillRect(0, y - 2, SCR_W, 16, 0x18E3 /* dark grey */);
-    } else {
-        M5Cardputer.Display.setTextColor(TFT_WHITE);
+    int y2 = getY(62);
+    if (y2 >= 14 && y2 < SCR_H) {
+        if (param_selected_idx == 2) {
+            M5Cardputer.Display.setTextColor(TFT_YELLOW);
+            M5Cardputer.Display.fillRect(0, y2 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+        } else {
+            M5Cardputer.Display.setTextColor(TFT_WHITE);
+        }
+        M5Cardputer.Display.setCursor(10, y2);
+        M5Cardputer.Display.printf("Thousands Sep: %s", use_thousands_sep ? "ON" : "OFF");
     }
-    M5Cardputer.Display.setCursor(10, y);
-    M5Cardputer.Display.printf("Thousands Sep: %s", use_thousands_sep ? "ON" : "OFF");
-
-    y += 18;
 
     // Setting 3: Auto Brackets
-    if (param_selected_idx == 3) {
-        M5Cardputer.Display.setTextColor(TFT_YELLOW);
-        M5Cardputer.Display.fillRect(0, y - 2, SCR_W, 16, 0x18E3 /* dark grey */);
-    } else {
-        M5Cardputer.Display.setTextColor(TFT_WHITE);
+    int y3 = getY(79);
+    if (y3 >= 14 && y3 < SCR_H) {
+        if (param_selected_idx == 3) {
+            M5Cardputer.Display.setTextColor(TFT_YELLOW);
+            M5Cardputer.Display.fillRect(0, y3 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+        } else {
+            M5Cardputer.Display.setTextColor(TFT_WHITE);
+        }
+        M5Cardputer.Display.setCursor(10, y3);
+        M5Cardputer.Display.printf("Auto Brackets: %s", auto_brackets ? "ON" : "OFF");
     }
-    M5Cardputer.Display.setCursor(10, y);
-    M5Cardputer.Display.printf("Auto Brackets: %s", auto_brackets ? "ON" : "OFF");
-
-    y += 18;
 
     // Setting 4: Sticky Mod
-    if (param_selected_idx == 4) {
-        M5Cardputer.Display.setTextColor(TFT_YELLOW);
-        M5Cardputer.Display.fillRect(0, y - 2, SCR_W, 16, 0x18E3 /* dark grey */);
-    } else {
-        M5Cardputer.Display.setTextColor(TFT_WHITE);
+    int y4 = getY(96);
+    if (y4 >= 14 && y4 < SCR_H) {
+        if (param_selected_idx == 4) {
+            M5Cardputer.Display.setTextColor(TFT_YELLOW);
+            M5Cardputer.Display.fillRect(0, y4 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+        } else {
+            M5Cardputer.Display.setTextColor(TFT_WHITE);
+        }
+        M5Cardputer.Display.setCursor(10, y4);
+        M5Cardputer.Display.printf("Sticky Mod: %s", sticky_mode ? "ON" : "OFF");
     }
-    M5Cardputer.Display.setCursor(10, y);
-    M5Cardputer.Display.printf("Sticky Mod: %s", sticky_mode ? "ON" : "OFF");
+
+    // Setting 5: Block Cursor
+    int y5 = getY(113);
+    if (y5 >= 14 && y5 < SCR_H) {
+        if (param_selected_idx == 5) {
+            M5Cardputer.Display.setTextColor(TFT_YELLOW);
+            M5Cardputer.Display.fillRect(0, y5 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+        } else {
+            M5Cardputer.Display.setTextColor(TFT_WHITE);
+        }
+        M5Cardputer.Display.setCursor(10, y5);
+        M5Cardputer.Display.printf("Block Cursor: %s", block_cursor ? "ON" : "OFF");
+    }
 }
 
 static void handleParamsKey(Keyboard_Class::KeysState& s) {
@@ -3478,9 +3572,9 @@ static void handleParamsKey(Keyboard_Class::KeysState& s) {
     bool is_down = s.down || s.tab;
     if (is_up) {
         if (param_selected_idx > 0) param_selected_idx--;
-        else param_selected_idx = 4; // Cyclic top -> bottom
+        else param_selected_idx = 5; // Cyclic top -> bottom
     } else if (is_down) {
-        if (param_selected_idx < 4) param_selected_idx++;
+        if (param_selected_idx < 5) param_selected_idx++;
         else param_selected_idx = 0; // Cyclic bottom -> top
     } else if (s.left || s.right) {
         if (param_selected_idx == 0) {
@@ -3496,6 +3590,8 @@ static void handleParamsKey(Keyboard_Class::KeysState& s) {
             auto_brackets = !auto_brackets;
         } else if (param_selected_idx == 4) {
             sticky_mode = !sticky_mode;
+        } else if (param_selected_idx == 5) {
+            block_cursor = !block_cursor;
         }
         saveNVSData();
     } else if (s.enter) {
@@ -3507,6 +3603,9 @@ static void handleParamsKey(Keyboard_Class::KeysState& s) {
             saveNVSData();
         } else if (param_selected_idx == 4) {
             sticky_mode = !sticky_mode;
+            saveNVSData();
+        } else if (param_selected_idx == 5) {
+            block_cursor = !block_cursor;
             saveNVSData();
         } else {
             param_edit_mode = true;
@@ -3666,14 +3765,11 @@ static void handleScriptsKey(Keyboard_Class::KeysState& s) {
 
         // 1. Ctrl Shortcuts in Script Editor
         if (s.ctrl) {
-            if (s.up || (s.fn && s.left)) {
-                script_cursor_pos = 0;
-                return;
-            }
-            if (s.down || (s.fn && s.right)) {
-                script_cursor_pos = script_edit_buf.size();
-                return;
-            }
+            bool is_left = s.left;
+            bool is_right = s.right;
+            bool is_up = s.up;
+            bool is_down = s.down;
+
             for (char c : s.word) {
                 switch (c) {
                     case 'a': case 'A':
@@ -3701,42 +3797,76 @@ static void handleScriptsKey(Keyboard_Class::KeysState& s) {
                         }
                         return;
                     }
+                    case ',': case '<':
+                        is_left = true;
+                        break;
+                    case '/': case '?': case '\'': case '"':
+                        is_right = true;
+                        break;
+                    case ';': case ':':
+                        is_up = true;
+                        break;
+                    case '.': case '>':
+                        is_down = true;
+                        break;
                 }
             }
+
+            if (is_left) {
+                script_cursor_pos = getPrevWordPos(script_edit_buf, script_cursor_pos);
+                return;
+            }
+            if (is_right) {
+                script_cursor_pos = getNextWordPos(script_edit_buf, script_cursor_pos);
+                return;
+            }
+            if (is_up) {
+                int lstart = getLineStart(script_edit_buf, script_cursor_pos);
+                if (lstart > 0) {
+                    int col = script_cursor_pos - lstart;
+                    int prev_lstart = getLineStart(script_edit_buf, lstart - 1);
+                    int prev_lend = lstart - 1;
+                    script_cursor_pos = std::min(prev_lstart + col, prev_lend);
+                }
+                return;
+            }
+            if (is_down) {
+                int lend = getLineEnd(script_edit_buf, script_cursor_pos);
+                if (lend < (int)script_edit_buf.size()) {
+                    int lstart = getLineStart(script_edit_buf, script_cursor_pos);
+                    int col = script_cursor_pos - lstart;
+                    int next_lstart = lend + 1;
+                    int next_lend = getLineEnd(script_edit_buf, next_lstart);
+                    script_cursor_pos = std::min(next_lstart + col, next_lend);
+                }
+                return;
+            }
+
+            // Block ordinary character insertion when Ctrl is held
+            return;
         }
 
-        // 2. Fn Shortcuts (Home / End / Fn+Enter Run)
+        // 2. Fn Shortcuts (Fn+Enter or Fn+R Run)
         if (s.fn) {
-            if (s.left && !s.ctrl) {
-                script_cursor_pos = getLineStart(script_edit_buf, script_cursor_pos);
-                return;
+            bool is_r_pressed = false;
+            for (char c : s.word) {
+                if (c == 'r' || c == 'R') {
+                    is_r_pressed = true;
+                    break;
+                }
             }
-            if (s.right && !s.ctrl) {
-                script_cursor_pos = getLineEnd(script_edit_buf, script_cursor_pos);
-                return;
-            }
-            if (s.enter) {
+            if (s.enter || is_r_pressed) {
                 user_scripts[script_selected_idx].content = script_edit_buf;
                 saveSDData();
                 script_console_output.clear();
                 script_console_scroll_offset = 0;
+                script_wrapped_output_dirty = true;
                 runScript(script_edit_buf);
+                script_wrapped_output_dirty = true;
                 script_edit_mode = false;
                 script_running_mode = true;
                 drawScripts();
                 return;
-            }
-            for (char c : s.word) {
-                if (c == 'l' || c == 'L') {
-                    if (s.ctrl) script_cursor_pos = 0;
-                    else script_cursor_pos = getLineStart(script_edit_buf, script_cursor_pos);
-                    return;
-                }
-                if (c == '\'' || c == '"') {
-                    if (s.ctrl) script_cursor_pos = script_edit_buf.size();
-                    else script_cursor_pos = getLineEnd(script_edit_buf, script_cursor_pos);
-                    return;
-                }
             }
         }
 
@@ -3894,8 +4024,12 @@ static void handleScriptsKey(Keyboard_Class::KeysState& s) {
             return;
         }
         if (s.enter && !user_scripts.empty()) {
+            script_console_output.clear();
+            script_console_scroll_offset = 0;
+            script_wrapped_output_dirty = true;
             script_running_mode = true;
             runScript(user_scripts[script_selected_idx].content);
+            script_wrapped_output_dirty = true;
             return;
         }
         if (s.del || s.backspace) {
@@ -4242,7 +4376,22 @@ static void processKeyEvent(Keyboard_Class::KeysState s) {
                 case 'c': case 'C': resetAppState(STATE_CONSTS); handled = true; break;
             }
         }
-        if (handled) return;
+        if (handled) {
+            M5Cardputer.Display.startWrite();
+            switch (appState) {
+                case STATE_CALC: drawCalc(); break;
+                case STATE_HELP: drawHelpView(); break;
+                case STATE_VARS: drawVars(); break;
+                case STATE_SCRIPTS: drawScripts(); break;
+                case STATE_PLOT: drawPlot(); break;
+                case STATE_BINDS: drawBinds(); break;
+                case STATE_FORMULAS: drawFormulas(); break;
+                case STATE_PARAMS: drawParams(); break;
+                case STATE_CONSTS: drawConsts(); break;
+            }
+            M5Cardputer.Display.endWrite();
+            return;
+        }
     }
 
     // Direct Arrow and Esc Navigation Shortcuts (without Fn) for Non-REPL Screens
@@ -4330,6 +4479,13 @@ static void processKeyEvent(Keyboard_Class::KeysState s) {
 }
 
 void loop() {
+    #if defined(ESP32) || defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+    esp_task_wdt_reset();
+    delay(1);
+    #elif defined(ARDUINO)
+    delay(1);
+    #endif
+
     uint32_t now = millis();
     static uint32_t last_key_poll = 0;
     if (now - last_key_poll < 5) return;
@@ -4437,15 +4593,54 @@ void loop() {
             M5Cardputer.Display.setBrightness(backlight_brightness);
             screen_is_on = true;
             last_activity_time = now;
-            delay(150);
-            M5Cardputer.Keyboard.updateKeyList();
-            M5Cardputer.Keyboard.updateKeysState();
+            while (M5Cardputer.Keyboard.isPressed()) {
+                M5.update();
+                M5Cardputer.Keyboard.updateKeyList();
+                M5Cardputer.Keyboard.updateKeysState();
+                delay(10);
+            }
             return;
         }
         last_activity_time = now;
     }
 
-    if (!M5Cardputer.Keyboard.isChange() || !M5Cardputer.Keyboard.isPressed()) return;
+    static uint32_t press_start_time = 0;
+    static uint32_t last_repeat_time = 0;
+    static bool was_pressed = false;
+    static size_t last_key_count = 0;
+
+    bool currently_pressed = M5Cardputer.Keyboard.isPressed();
+    size_t current_key_count = M5Cardputer.Keyboard.keyList().size();
+    uint32_t now_ms = millis();
+
+    if (!currently_pressed) {
+        was_pressed = false;
+        last_key_count = 0;
+        press_start_time = 0;
+        last_repeat_time = 0;
+        return;
+    }
+
+    bool is_new_combo = (!was_pressed) || (current_key_count > last_key_count);
+
+    if (is_new_combo) {
+        // New key added or fresh press: execute immediately!
+        was_pressed = true;
+        last_key_count = current_key_count;
+        press_start_time = now_ms;
+        last_repeat_time = now_ms;
+    } else {
+        last_key_count = current_key_count;
+        // Key combination is held unchanged: enforce initial repeat delay (350ms) and rate (100ms)
+        if (now_ms - press_start_time < 350) {
+            return;
+        }
+        if (now_ms - last_repeat_time < 100) {
+            return;
+        }
+        last_repeat_time = now_ms;
+    }
+
     Keyboard_Class::KeysState s = M5Cardputer.Keyboard.keysState();
 
     // Sticky Modifier Mode Logic
@@ -4519,10 +4714,15 @@ void loop() {
         for (const auto& pos : list) {
             char val_first = _key_value_map[pos.y][pos.x].value_first;
             char val_third = _key_value_map[pos.y][pos.x].value_third;
-            if (val_third == KEY_NONE && val_first != KEY_FN) {
+            if (val_third == KEY_NONE && val_first != KEY_FN && val_first != 0) {
                 s.word.push_back(val_first);
             }
         }
+    }
+
+    bool has_action_key = !s.word.empty() || s.enter || s.esc || s.left || s.right || s.up || s.down || s.backspace || s.tab;
+    if (!has_action_key) {
+        return;
     }
 
     processKeyEvent(s);

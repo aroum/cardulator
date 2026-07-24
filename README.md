@@ -1,341 +1,631 @@
-# Cardulator — Scientific REPL Calculator & Scripting Engine for M5Stack Cardputer
+# Calculator App
 
-![logo](logo.png)
+## HW
 
-[![Build Status](https://github.com/aroum/cardulator/actions/workflows/build.yml/badge.svg)](https://github.com/aroum/cardulator/actions)
-[![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)](https://platformio.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+m5stack cardputer adv
 
-**Cardulator** is a powerful, feature-rich scientific mathematical calculator and REPL scripting environment designed specifically for the **M5Stack Cardputer ADV** (ESP32-S3). Built on top of the robust [`TinyExpr-PlusPlus`](https://github.com/Blake-Madden/tinyexpr-plusplus) engine, Cardulator provides real-time syntax highlighting, rainbow bracket matching, SI prefix parsing, scientific notation, user variables and functions, multi-variable formula wizards, a C-style scripting engine with array support, matrix/vector operations, customizable hotkey binds, and interactive 2D function plotting.
+### FW
 
-> [!TIP]
-> Press **`Fn + H`** at any time or type **`help`** directly in the REPL to open the interactive Context Help modal with hotkeys and usage examples.
+Прошивка представляет собой мощный математический REPL-калькулятор на базе библиотеки `TinyExpr-PlusPlus` с автодополнением по `Tab`, поддержкой приставок СИ, экспоненциальной записи, пользовательских переменных и функций.
 
-![photo](photo.png)
----
+### Управление и Клавиши
 
-## 🌟 Key Features
+Физические клавиши на клавиатуре Cardputer маппятся следующим образом для навигации и управления в интерфейсе калькулятора:
 
-- **High-Performance REPL**: Interactive evaluation loop with `Tab` autocompletion, 1-based answer history (`e1`, `e2`...), SI prefix parsing (`1k` = `1000`, `2M2` = `2,200,000`), scientific notation (`5e10`), and multi-statement lines using `;`.
-- **Dynamic Syntax Highlighting**: Real-time rainbow bracket depth matching (`( )`), yellow numbers, cyan variables, magenta constants, and red syntax/error highlighting.
-- **2D Plotting Engine (`STATE_PLOT` / `Fn + G`)**: Interactive Matplotlib-like 2D function and vector plotter (`plot(y)`, `plot(x, y, color, linestyle)`) with panning (WASD / Arrows), 5x turbo zoom (`Ctrl + Zoom`), auto-scaling, and `plot.hold()`.
-- **Formula Library & Interactive Wizard (`Fn + F`)**: Multi-argument formula manager (up to 4 parameters) with sequential step-by-step evaluation wizards, syntax-highlighted code editor, and NVS persistence.
-- **Scripting Engine (`Fn + S`)**: C-style script runner supporting `if/elif/else`, `while`, `for`, `sleep()`, 1D arrays/vectors, element-wise math (`.*`, `./`), dot products, and formatted text printing (`print("x={x}")`).
-- **Customizable Hotkey Binds (`Fn + B`)**: Bind expressions or template shortcuts to `Alt + [Key]` for quick one-touch execution in REPL.
-- **NVS Storage & Persistence**: Automatic background saving and loading of user variables, functions, scripts, keybindings, and system parameters across reboots.
-- **100% Host Unit Testing**: Built-in native test suite running 20 comprehensive unit tests on host OS (macOS/Linux) via PlatformIO `native`.
+- **Кнопка G0 (Физическая кнопка на корпусе Cardputer)**:
+  - Из любого экрана/режима возвращает пользователя в терминал REPL (`STATE_CALC`).
+  - Если текущий активный экран уже REPL, нажатие на **G0** очищает текущее выражение, результат, статус ошибки и сбрасывает историю.
 
----
+- **Навигация (управление курсором во всех текстовых полях)**:
+  - Прямые клавиши `,` `/` `;` `.` в полях ввода всегда печатают свои буквальные символы (запятую `,`, слэш `/`, точку с запятой `;` и точку `.`).
+  - Управление курсором во всех полях ввода (REPL, формула, скрипты, переменные) осуществляется **строго через зажатую клавишу `Fn`**:
+    - `fn + ,` $\rightarrow$ **Left** (Влево — перемещение курсора посимвольно влево)
+    - `fn + /` $\rightarrow$ **Right** (Вправо — перемещение курсора посимвольно вправо)
+    - `fn + ;` $\rightarrow$ **Up** (Вверх — прокрутка истории вычислений в REPL или навигация по строкам/спискам)
+    - `fn + .` $\rightarrow$ **Down** (Вниз — прокрутка истории вычислений в REPL или навигация по строкам/спискам)
+  - `Esc` (клавиша `Esc` или ``` ` ``` / `~` без Fn) $\rightarrow$ Возвращает в **предыдущее меню**, из которого был открыт экран (или в REPL, если стек пуст).
+  - `Ctrl + Left` (`Ctrl + fn + ,`) $\rightarrow$ Перемещение курсора по словам влево
+  - `Ctrl + Right` (`Ctrl + fn + /`) $\rightarrow$ Перемещение курсора по словам вправо
+  - `Ctrl + Up` / `Ctrl + Down` (`Ctrl + fn + ;` / `Ctrl + fn + .`) $\rightarrow$ Прокрутка вьюпорта истории REPL вверх/вниз
+  - `fn + l` $\rightarrow$ **Home** (Переместить курсор в начало строки; `Ctrl + fn + l` — в начало документа)
+  - `fn + '` $\rightarrow$ **End** (Переместить курсор в конец строки; `Ctrl + fn + '` — в конец документа)
 
-## ⌨️ Controls & Keybindings
+- **Контекстная справка и Встроенная помощь**:
+  - `help()` или `help` в REPL $\rightarrow$ Выводит полный список всех поддерживаемых математических функций и операторов.
+  - `help(func_name)` $\rightarrow$ Выводит индивидуальную справочную информацию по конкретной функции (например, `help(print)`, `help(plot)`, `help(len)`, `help(sin)`).
+  - `fn + h` $\rightarrow$ Вызов полноэкранного всплывающего окна справки **Help Overlay** с горячими клавишами, сочетаниями `fn+*` и примерами.
+  - Подробное руководство доступно в отдельном файле [docs/help.md](help.md).
 
-### 1. Navigation & Cursor Control (All Text Fields)
+- **Автодополнение (Tab)**:
+  - Нажатие `Tab` выполняет контекстное автодополнение ключевых слов, функций, переменных (`user_args`), констант (`user_consts`) и ячеек истории (`e1`, `e2`...).
+  - Поддерживает **циклический перебор результатов** при повторных нажатиях `Tab` (например, `si` $\rightarrow$ `sin()` $\rightarrow$ `sinh()` $\rightarrow$ `sin()`).
 
-Physical keys `,` `/` `;` `.` type their literal characters by default. Cursor navigation in all input fields (REPL, formulas, scripts, variables) is controlled strictly via the **`Fn` key**:
+- **Режим графиков (`STATE_PLOT`) клавиши и управление**:
+  - `Стрелки` (`Fn + ;/,/.//` или `WASD` / `;./,`) $\rightarrow$ Панорамирование/сдвиг графика по осям X/Y.
+  - `Fn+Enter` или `Fn+R` $\rightarrow$ Сохранить текущий скрипт и сразу запустить его на выполнение (`runScript`).
+- **Блочный курсор**: В системных настройках (`Fn+P`) доступен выбор режима отображения курсора (`Block Cursor: ON/OFF`). В блочном режиме символ под курсором подсвечивается инвертированным цветом и остается полностью видимым.
+  - `Ctrl + Arrow` / `Ctrl + WASD` $\rightarrow$ Ускоренное в **5 раз** панорамирование / скроллинг графика.
+  - `-` / `_` $\rightarrow$ Уменьшение масштаба (Zoom Out).
+  - `=` / `+` $\rightarrow$ Увеличение масштаба (Zoom In).
+  - `Ctrl + -` / `Ctrl + +` $\rightarrow$ Ускоренное в **5 раз** масштабирование (Zoom 5x).
+  - `a` / `A` $\rightarrow$ Автомасштабирование (Сброс масштаба и центрирование графика).
+  - `Esc` (или ``` ` ```) $\rightarrow$ Возврат в меню/REPL, из которого был вызван график.
+  - **Координатные оси**: В центре координат $(0,0)$ выводятся две взаимно перпендикулярные оси $X$ и $Y$.
+  - **История REPL**: Команда `plot(...)` сразу сохраняется в историю вычислений REPL (`e#`) и вычисляется с первого нажатия `Enter`.
+- **Действия**:
+  - `Enter` $\rightarrow$ **OK** (Вычисление / Подтверждение введенного выражения)
+  - `Backspace` $\rightarrow$ **Del** (Стирание символа перед курсором)
+  - `fn + Backspace` (или `Delete`) $\rightarrow$ **Delete** (Стирание символа справа от курсора)
+  - `Ctrl + Backspace` $\rightarrow$ Удаление слова слева от курсора
+  - `Ctrl + Delete` (или `Ctrl + fn + Backspace`) $\rightarrow$ Удаление слова справа от курсора
+  - `fn + c` $\rightarrow$ **Clear** (Полная очистка истории результатов, переменных, функций и экрана)
 
-- **`Fn + ,`** $\rightarrow$ **Left** (Move cursor 1 character left)
-- **`Fn + /`** $\rightarrow$ **Right** (Move cursor 1 character right)
-- **`Fn + ;`** $\rightarrow$ **Up** (Navigate calculation history in REPL or line/list navigation)
-- **`Fn + .`** $\rightarrow$ **Down** (Navigate calculation history in REPL or line/list navigation)
-- **`Ctrl + Left`** (`Ctrl + Fn + ,`) / **`Ctrl + Right`** (`Ctrl + Fn + /`) $\rightarrow$ Word-by-word cursor jump left/right
-- **`Ctrl + Up`** / **`Ctrl + Down`** (`Ctrl + Fn + ;` / `Ctrl + Fn + .`) $\rightarrow$ Scroll REPL viewport up/down
-- **`Fn + L`** $\rightarrow$ **Home** (Move cursor to beginning of line; `Ctrl + Fn + L` jumps to top of document)
-- **`Fn + '`** $\rightarrow$ **End** (Move cursor to end of line; `Ctrl + Fn + '` jumps to bottom of document)
-- **`Esc`** (or ``` ` ``` / `~` without Fn) $\rightarrow$ Return to the previous menu/screen (or REPL).
-- **Physical G0 Button (Side Button)**: Returns to REPL (`STATE_CALC`) from any screen. If already in REPL, pressing **G0** clears current input, error status, and resets history.
+- **История ввода команд**:
+  - При прокрутке истории ввода клавишами **Up** (`fn + ;`) и **Down** (`fn + .`) выбранное ранее выражение подставляется в строку ввода, при этом **курсор остаётся в конце строки** без принудительного выделения всего текста (`select_all_active` сбрасывается в `false`).
 
-### 2. Global Shortcuts & Menu Keys
+- **Горячие клавиши редактирования (Ctrl)**:
+  - `Ctrl + A` $\rightarrow$ Выделить всю строку/текст (выделенный текст подсвечивается синим фоном).
+  - `Ctrl + C` $\rightarrow$ Копировать выделенный текст (или текущую строку) в буфер обмена `clipboard`.
+  - `Ctrl + X` $\rightarrow$ Вырезать выделенный текст (или **всю текущую строку** под курсором в редакторе скриптов, если ничего не выделено) в буфер обмена `clipboard`.
+  - `Ctrl + V` $\rightarrow$ Вставить текст из буфера обмена в позицию курсора.
+  - `Ctrl + Z` $\rightarrow$ Отменить последнее изменение строки (Undo).
+  - `Ctrl + Y` $\rightarrow$ Повторить отмененное изменение строки (Redo).
+  - `Ctrl + Backspace` / `Ctrl + Del` $\rightarrow$ Полная очистка текущей строки ввода.
 
-| Shortcut     | Action                                                                                                                                    |
-| :----------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
-| **`Fn + H`** | Open Fullscreen Modal Context Help Overlay (with hotkeys and examples)                                                                    |
-| **`Fn + V`** | Open Variables Manager (`STATE_VARS`)                                                                                                     |
-| **`Fn + S`** | Open Script Manager & Code Editor (`STATE_SCRIPTS`)                                                                                       |
-| **`Fn + G`** | Open 2D Plotting Mode (`STATE_PLOT`)                                                                                                      |
-| **`Fn + B`** | Open Hotkey Binds Manager (`STATE_BINDS`)                                                                                                 |
-| **`Fn + F`** | Open Formulas Library & Interactive Wizard (`STATE_FORMULAS`)                                                                             |
-| **`Fn + P`** | Open System Parameters (Screen Timeout, Brightness, Thousands Sep, Sticky Mod)                                                            |
-| **`Fn + C`** | Clear All Memory (Variables, Functions, REPL History & Screen)                                                                            |
-| **`Fn + D`** | Toggle Angle Units (Degrees / Radians)                                                                                                    |
-| **`Tab`**    | Autocomplete keywords, functions, user variables, constants, and history cells (`e1`, `e2`...). Supports cyclic cycling on repeated taps. |
+### Подсветка скобок и вывод ошибок
 
-### 3. Editing & Clipboard Shortcuts (Ctrl)
+- **Радужные скобки (Rainbow Brackets)**:
+  Введенные круглые скобки `( )` раскрашиваются на экране разными цветами в зависимости от глубины их вложенности: **Циан $\rightarrow$ Маджента $\rightarrow$ Желтый $\rightarrow$ Зеленый $\rightarrow$ Оранжевый**.
+  Если в выражении есть непарная/незакрытая скобка, она подсвечивается **ярко-красным цветом** для предупреждения пользователя.
 
-- **`Enter`** $\rightarrow$ Evaluate expression / Confirm input
-- **`Backspace`** $\rightarrow$ Delete character before cursor
-- **`Fn + Backspace`** (or **`Delete`**) $\rightarrow$ Delete character after cursor
-- **`Ctrl + Backspace`** $\rightarrow$ Delete word left of cursor
-- **`Ctrl + Delete`** (or `Ctrl + Fn + Backspace`) $\rightarrow$ Delete word right of cursor
-- **`Ctrl + A`** $\rightarrow$ Select all text
-- **`Ctrl + C`** $\rightarrow$ Copy selected text (or current line) to clipboard
-- **`Ctrl + X`** $\rightarrow$ Cut selected text (or current line) to clipboard
-- **`Ctrl + V`** $\rightarrow$ Paste text from clipboard
-- **`Ctrl + Z`** $\rightarrow$ Undo last edit
-- **`Ctrl + Y`** $\rightarrow$ Redo last edit
+- **Вывод ошибок**:
+  Если выражение содержит синтаксическую ошибку или приводит к математической неопределенности, результат окрашивается в **ярко-красный цвет** и выводится диагностическое сообщение. Возможные ошибки включают:
+  - `Mismatched Brackets` — Возникает, если в выражении нарушен баланс открывающих и закрывающих круглых скобок `( )` (например, `(2+3`).
+  - `Unknown Token` — Возникает, если введены неизвестные символы, незарегистрированные переменные или допущена опечатка в имени математической функции (например, `sinn(x)` вместо `sin(x)`).
+  - `Math Error` — Возникает при попытке вычисления математически неопределенных операций:
+    - Деление на ноль (например, `5 / 0`).
+    - Квадратный корень из отрицательного числа (например, `sqrt(-4)`).
+    - Логарифм от нуля или отрицательного числа (например, `ln(0)` или `log(-5)`).
+    - Числовое переполнение (overflow) при превышении максимального диапазона double.
+  - *Специфические синтаксические предупреждения* (первая строка детального лога компилятора `mXparser`, усеченная до 20 символов).
 
----
+### Поддерживаемые функции библиотеки TinyExpr-PlusPlus
 
-## 📚 Mathematical Reference & Supported Functions
+Библиотека `TinyExpr-PlusPlus` предоставляет обширный набор математических функций. Все имена функций чувствительны к регистру.
 
-All function names are case-sensitive. Trigonometric functions use **Degrees** by default (can be toggled to Radians via `Fn + D`).
+#### 1. Тригонометрия (углы по умолчанию в градусах)
 
-### 1. Trigonometry & Hyperbolics
+- **Прямые**: `sin(x)`, `cos(x)`, `tan(x)`, `ctan(x)` (или `cot(x)`), `sec(x)`, `cosec(x)` (или `csc(x)`)
+- **Обратные**: `asin(x)`, `acos(x)`, `atan(x)`, `actan(x)` (или `acot(x)`), `asec(x)`, `acosec(x)`
+- **Преобразование углов**: `deg2rad(x)` (сокращение `d2r(x)` — переводит градусы в радианы), `rad2deg(x)` (сокращение `r2d(x)` — переводит радианы в градусы)
+- **Гиперболические**: `sinh(x)`, `cosh(x)`, `tanh(x)`, `coth(x)`, `sech(x)`, `csch(x)`
+- **Обратные гиперболические**: `asinh(x)`, `acosh(x)`, `atanh(x)`, `acoth(x)`
 
-- **Direct Trig**: `sin(x)`, `cos(x)`, `tan(x)`, `ctan(x)` (or `cot(x)`), `sec(x)`, `cosec(x)` (or `csc(x)`)
-- **Inverse Trig**: `asin(x)`, `acos(x)`, `atan(x)`, `actan(x)` (or `acot(x)`), `asec(x)`, `acosec(x)`
-- **Angle Unit Conversions**: `deg2rad(x)` (`d2r(x)` — converts degrees to radians), `rad2deg(x)` (`r2d(x)` — converts radians to degrees)
-- **Hyperbolic**: `sinh(x)`, `cosh(x)`, `tanh(x)`, `coth(x)`, `sech(x)`, `csch(x)`
-- **Inverse Hyperbolic**: `asinh(x)`, `acosh(x)`, `atanh(x)`, `acoth(x)`
+#### 2. Логарифмы, степени и корни
 
-### 2. Logarithms, Powers & Roots
+- `ln(x)` — натуральный логарифм (основание $e$)
+- `log(x)` — десятичный логарифм (основание 10)
+- `log2(x)` — двоичный логарифм (основание 2)
+- `logb(b, x)` — логарифм $x$ по произвольному основанию $b$
+- `exp(x)` — экспонента $e^x$
+- `sqrt(x)` — квадратный корень
+- `cbrt(x)` — кубический корень
 
-- `ln(x)` — Natural logarithm (base $e$)
-- `log(x)` — Decimal logarithm (base 10)
-- `log2(x)` — Binary logarithm (base 2)
-- `logb(b, x)` — Logarithm of $x$ with arbitrary base $b$
-- `exp(x)` — Exponential $e^x$
-- `sqrt(x)` — Square root
-- `cbrt(x)` — Cube root
+#### 3. Базовые функции и округления
 
-### 3. Basic Math, Rounding & Percentage
+- `abs(x)` — абсолютное значение (модуль)
+- `ceil(x)` — округление вверх до ближайшего целого
+- `floor(x)` — округление вниз до ближайшего целого
+- `round(x)` — стандартное математическое округление
+- `trunc(x)` — отбрасывание дробной части (усечение)
+- `sgn(x)` — функция знака (сигнум)
+- `mod(x, y)` (или инфиксный оператор `%`: `x % y`) — остаток от деления (деление по модулю).
+- **Постфиксный оператор процента `%`**:
+  - Если за `%` не следует число/выражение, он вычисляет проценты:
+    - Одиночный процент: `5%` $\rightarrow$ `0.05`
+    - В вычитаниях/сложениях: `10 - 15%` $\rightarrow$ вычитает 15% от 10 (вычисляется как `10 - 10 * 0.15 = 8.5`)
+    - `100 + 5%` $\rightarrow$ прибавляет 5% к 100 (вычисляется как `100 + 100 * 0.05 = 105`)
 
-- `abs(x)` — Absolute value
-- `ceil(x)` — Round up to nearest integer
-- `floor(x)` — Round down to nearest integer
-- `round(x)` — Standard mathematical rounding
-- `trunc(x)` — Truncate fractional part
-- `sgn(x)` — Signum function (sign of number)
-- `mod(x, y)` (or infix operator `%`: `x % y`) — Modulo (remainder of division)
-- **Postfix Percentage Operator `%`**:
-  - Standalone percentage: `5%` $\rightarrow$ `0.05`
-  - In addition/subtraction: `100 - 15%` $\rightarrow$ `85` (`100 - 100 * 0.15`), `100 + 5%` $\rightarrow$ `105`
+#### 4.5. Логические операторы и сравнения
 
-### 4. Logic & Comparisons
+Поддерживаются следующие операторы для логических и условных выражений (в REPL и в скриптах):
 
-- **Comparison Operators**: `>`, `<`, `>=`, `<=`, `==`, `!=`
-- **Logical AND**: `and` or `&&`
-- **Logical OR**: `or` or `||`
-- **Logical NOT**: `not` or `!`
-- **Logical XOR**: `xor`
+- **Операторы сравнения**: `>`, `<`, `>=`, `<=`, `==`, `!=`
+- **Логическое И (AND)**: `and` или `&&`
+- **Логическое ИЛИ (OR)**: `or` или `||`
+- **Логическое НЕ (NOT)**: `not` или `!`
+- **Исключающее ИЛИ (XOR)**: `xor` (например, `a xor b`)
 
-### 5. Probability, Statistics & Random Variables
+#### 4. Теория вероятностей, статистика и случайные величины
 
-- `rNor(mean, stddev)` — Random number from normal distribution
-- `rUni(min, max)` — Random number from uniform distribution
-- `mean(a1, a2, ...)` — Arithmetic mean
-- `median(a1, a2, ...)` — Median of sample
-- `std(a1, a2, ...)` — Standard deviation
-- `var(a1, a2, ...)` — Sample variance
-- `min(a1, a2, ...)` / `max(a1, a2, ...)` — Minimum / maximum value
+- `rNor(mean, stddev)` — случайное число из нормального распределения
+- `rUni(min, max)` — случайное число из равномерного распределения
+- `mean(a1, a2, ...)` — среднее арифметическое
+- `median(a1, a2, ...)` — медиана выборки
+- `std(a1, a2, ...)` — стандартное отклонение
+- `var(a1, a2, ...)` — дисперсия выборки
+- `min(a1, a2, ...)` — поиск минимального значения
+- `max(a1, a2, ...)` — поиск максимального значения
 
-### 6. Combinatorics & Special Functions
+### Массивы и Диапазоны (Arrays & Ranges)
 
-- `C(n, k)` (or `Cnk(n, k)`) — Binomial coefficient (combinations $n$ choose $k$)
-- `P(n, k)` — Permutations $n$ P $k$
-- `fact(n)` (or `n!`) — Factorial
-- `gcd(a, b, ...)` — Greatest common divisor
-- `lcm(a, b, ...)` — Least common multiple
-- `fib(n)` — $n$-th Fibonacci number
+Калькулятор поддерживает создание векторов, массивов и диапазонов чисел, которые можно использовать в вычислениях, скриптах, циклах или для построения графиков.
 
-### 7. Built-in Constants
+- **Простой диапазон (шаг = 1)**: `начало:конец`
+  - Пример: `1:10` генерирует вектор `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`.
+- **Диапазон с шагом**: `начало:шаг:конец`
+  - Пример: `1:2:10` генерирует вектор `[1, 3, 5, 7, 9]`.
+  - Пример: `10:-1:1` генерирует убывающий вектор от 10 до 1.
+- **Обращение к элементам вектора (индексация)**:
+  Элементы вектора извлекаются с помощью квадратных скобок `[индекс]` (индексация начинается с **1**):
+  - Пример: `(1:2:10)[1]` $\rightarrow$ вернет `1` (первый элемент).
+  - Пример: `(1:10)[5]` $\rightarrow$ вернет `5` (пятый элемент).
 
-- `pi` (or `PI`) — $\pi \approx 3.14159265$
-- `e` (or `E`) — Euler's number $e \approx 2.71828182$
-- `phi` — Golden ratio $\phi \approx 1.61803398$
+Диапазоны используются как аргументы для циклов в скриптах (`for X = 1:2:30`) и для передачи наборов точек в графический режим построения (`plot(1:30, Y)`).
 
-#### Disambiguation of `e` Contexts
+### Условия (If / Else) и Циклы в формулах
 
-1. **Constant `e`**: Standalone token (e.g., `e`, `e^2`, `2*e`).
-2. **Scientific Notation**: Joined with numbers (e.g., `5e10` $= 5 \times 10^{10}$, `1e-5` $= 10^{-5}$).
-3. **REPL History**: `e` followed immediately by an index number (e.g., `e1`, `e2`).
+В выражениях REPL можно использовать логические условия и встроенные операторы циклов (суммирования/произведения).
 
----
+- **Логические условия (If / Else)**:
+  Используется встроенная функция `if(условие, выражение_если_да, выражение_если_нет)`:
+  - Пример: `if(5 > 3, 10, 20)` $\rightarrow$ вернет `10`.
+  - Пример: `if(x != 0, 1/x, 0)` $\rightarrow$ возвращает `1/x`, если `x` не равен нулю, предотвращая деление на ноль.
+  Для множественных условий можно использовать функцию `iff(условие1, да1, условие2, да2, ..., иначе)`:
+  - Пример: `iff(x > 0, 1, x < 0, -1, 0)` $\rightarrow$ возвращает знак числа (аналог функции `sgn(x)`).
 
-## 🏷️ SI Prefixes
+- **Математические циклы (Суммирование и Произведение)**:
+  - **Суммирование (Цикл Sum)**: `sum(индекс, от, до, выражение)`
+    - Пример: `sum(i, 1, 10, i^2)` $\rightarrow$ вычисляет сумму квадратов чисел от 1 до 10 ($\sum_{i=1}^{10} i^2 = 385$).
+  - **Произведение (Цикл Prod)**: `prod(индекс, от, до, выражение)`
+    - Пример: `prod(i, 1, 5, i)` $\rightarrow$ произведение чисел от 1 до 5 (вычисляет $5! = 120$).
+  - **Поиск минимума/максимума по диапазону**: `min(индекс, от, до, выражение)` и `max(...)`
+    - Пример: `max(x, 1, 5, -x^2 + 4*x)` $\rightarrow$ найдет максимум функции на целочисленном интервале.
 
-Cardulator supports standard SI prefixes directly within expressions (e.g., `1.5k + 200` $\rightarrow$ `1700`). SI prefixes can also replace the decimal separator in R-notation (e.g., `1k7` $\rightarrow$ `1700`).
+#### 5. Комбинаторика и специальные функции
 
-### Multipliers ($\ge 1$)
+- `C(n, k)` (или `Cnk(n, k)`) — число сочетаний из $n$ по $k$ (биномиальный коэффициент)
+- `P(n, k)` — число размещений из $n$ по $k$
+- `fact(n)` (или `n!`) — факториал числа
+- `gcd(a, b, ...)` — наибольший общий делитель
+- `lcm(a, b, ...)` — наименьшее общее кратное
+- `fib(n)` — $n$-ое число Фибоначчи
 
-| Power     | Prefix | Symbol | Example                |
-| :-------- | :----- | :----- | :--------------------- |
-| $10^1$    | deca   | `da`   | `1da` = `10`           |
-| $10^2$    | hecto  | `h`    | `1h` = `100`           |
-| $10^3$    | kilo   | `k`    | `1.5k` = `1500`        |
-| $10^6$    | mega   | `M`    | `2M2` = `2,200,000`    |
-| $10^9$    | giga   | `G`    | `1G` = `1,000,000,000` |
-| $10^{12}$ | tera   | `T`    | `1T` = `10^{12}`       |
-| $10^{15}$ | peta   | `P`    | `1P` = `10^{15}`       |
-| $10^{18}$ | exa    | `E`    | `1E` = `10^{18}`       |
-| $10^{21}$ | zetta  | `Z`    | `1Z` = `10^{21}`       |
-| $10^{24}$ | yotta  | `Y`    | `1Y` = `10^{24}`       |
+#### 6. Константы
 
-### Submultipliers ($< 1$)
+- `pi` (или `PI`) — число $\pi \approx 3.14159265$
+- `e` (или `E` если не используется экспоненциальная запись) — экспонента $e \approx 2.71828182$
+- `phi` — золотое сечение $\approx 1.61803398$
 
-| Power      | Prefix | Symbol | Example                |
-| :--------- | :----- | :----- | :--------------------- |
-| $10^{-1}$  | deci   | `d`    | `1d` = `0.1`           |
-| $10^{-2}$  | centi  | `c`    | `1c` = `0.01`          |
-| $10^{-3}$  | milli  | `m`    | `100m` = `0.1`         |
-| $10^{-6}$  | micro  | `u`    | `10u` = `0.00001`      |
-| $10^{-9}$  | nano   | `n`    | `1n5` = `0.0000000015` |
-| $10^{-12}$ | pico   | `p`    | `1p` = `10^{-12}`      |
-| $10^{-15}$ | femto  | `f`    | `1f` = `10^{-15}`      |
-| $10^{-18}$ | atto   | `a`    | `1a` = `10^{-18}`      |
-| $10^{-21}$ | zepto  | `z`    | `1z` = `10^{-21}`      |
-| $10^{-24}$ | yocto  | `y`    | `1y` = `10^{-24}`      |
+### Различия использования символа `e`
 
----
+В калькуляторе символ `e` используется в трех разных контекстах. Компилятор выражений автоматически различает их на основе контекста:
 
-## 📊 Arrays, Ranges & Inline Conditions/Loops
+1. **Математическая константа `e`** (основание натурального логарифма):
+   - Используется как отдельный токен (например, `e`, `e^2`, `2*e`).
+   - Значение: $\approx 2.71828182$.
+2. **Экспоненциальная запись (экспонента) `e`**:
+   - Используется для ввода степеней десятки и записывается *слитно между числами* (например, `5e10` $\rightarrow 5 \times 10^{10}$, `1e-5` $\rightarrow 10^{-5}$).
+3. **История ответов REPL `e#`**:
+   - Записывается в виде буквы `e`, за которой *сразу же идет число* — порядковый номер ответа в истории (например, `e1`, `e2`, `e3`).
+   - Обозначает результат соответствующего шага вычислений.
 
-### 1. Arrays & Ranges
+# Большие
 
-- **Simple Range (step = 1)**: `start:end` (e.g., `1:10` $\rightarrow$ `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`)
-- **Range with Step**: `start:step:end` (e.g., `1:2:10` $\rightarrow$ `[1, 3, 5, 7, 9]`, `10:-1:1` $\rightarrow$ `[10, 9, ..., 1]`)
-- **Indexing (1-based)**: `(1:2:10)[1]` $\rightarrow$ `1`
+| Степень | Приставка | Обозначение |
+| ------- | --------- | ----------- |
+| 1e1     | дека      | da          |
+| 1e2     | гекто     | h           |
+| 1e3     | кило      | k           |
+| 1e6     | мега      | M           |
+| 1e9     | гига      | G           |
+| 1e12    | тера      | T           |
+| 1e15    | пета      | P           |
+| 1e18    | экса      | E           |
+| 1e21    | зетта     | Z           |
+| 1e24    | йотта     | Y           |
 
-### 2. Inline Conditionals (If / Else)
+# Маленькие
 
-- `if(condition, expr_true, expr_false)` (e.g., `if(5 > 3, 10, 20)` $\rightarrow$ `10`)
-- Multi-branch condition: `iff(cond1, val1, cond2, val2, ..., default)` (e.g., `iff(x > 0, 1, x < 0, -1, 0)`)
+| Степень | Приставка | Обозначение |
+| ------- | --------- | ----------- |
+| 1e-1    | деци      | d           |
+| 1e-2    | санти     | c           |
+| 1e-3    | милли     | m           |
+| 1e-6    | микро     | u           |
+| 1e-9    | нано      | n           |
+| 1e-12   | пико      | p           |
+| 1e-15   | фемто     | f           |
+| 1e-18   | атто      | a           |
+| 1e-21   | зепто     | z           |
+| 1e-24   | йокто     | y           |
 
-### 3. Inline Mathematical Loops
+### User Defined Arguments & Functions
 
-- **Summation**: `sum(index, start, end, expr)` (e.g., `sum(i, 1, 10, i^2)` $\rightarrow$ $\sum_{i=1}^{10} i^2 = 385$)
-- **Product**: `prod(index, start, end, expr)` (e.g., `prod(i, 1, 5, i)` $\rightarrow$ $5! = 120$)
-- **Range Min/Max**: `min(index, start, end, expr)` / `max(index, start, end, expr)`
-
----
-
-## 💻 Custom Variables & Functions
-
-### 1. User Variables & Constants
-
-- Variables: `temp = 25`, then `temp * 2` $\rightarrow$ `50`.
-- Constants: `const a = 3`. Constants can be updated with explicit `const` (`const a = 2`), but assigning `a = 10` raises a `Const Error`.
-
-### 2. User Functions
-
-- **Single-line functions**: `f(x) = x^2` or `f(x, y) = 2*x + y`
-- **Multi-line / Block functions (`fn` / `def` / `function`)**:
+- **Регистрозависимость (Case Sensitivity)**: Все имена переменных, функций и констант **чувствительны к регистру**. Переменная `x` и переменная `X` — это два совершенно разных объекта (`x != X`).
+- **Однострочные функции**: Пример: `f(x) = x^2` или `f(x,y) = 2*x+y`
+- **Многострочные функции и функции с блоком кода (`def` / `fn` / `function`)**:
+  Поддерживаются в REPL и в Скриптах с помощью ключевых слов `def`, `fn` или `function` и оператора `return` (блоки кода задаются в `{ ... }` или завершаются словом `end`):
 
   ```c
-  fn calculate(a, b) {
-      c = a * 2;
-      return c + b
+  def stats(a, b) {
+      s = a + b
+      d = a - b
+      m = a * b
+      return s, d, m
   }
+
+  x, y, z = stats(10, 4)
+  print("Sum: {x}, Diff: {y}, Prod: {z}")
   ```
 
-- **Multiple statements on one line**: Separate instructions with `;` (e.g., `x = 5; y = 10; x + y` $\rightarrow$ `15`).
+  - **Множественный возврат (`return a, b, c`) и присваивание кортежей (`x, y, z = fn()`)**:
+    Оператор `return` умеет возвращать сразу несколько значений через запятую `return x, y` или в виде вектора `return [x, y]`. Конструкция присваивания вида `x, y, z = stats(10, 4)` автоматически распаковывает возвращенные значения по соответствующим переменным.
+- **Разделитель инструкций (Точка с запятой `;`)**:
+  В REPL и скриптах можно записывать несколько инструкций на одной строке через `;`:
+  Пример REPL: `x = 5; y = 10; x + y` $\rightarrow$ возвращает `15`.
+  Пример однострочного объявления функции: `fn add(a, b) { return a + b }; add(5, 7)` $\rightarrow$ возвращает `12`.
+
+### Примеры ввода и вывода (REPL Examples)
+
+1. **Простые вычисления:**
+   - Ввод: `2 + 3 * 4`
+   - Вывод: `e1 = 14` (сохраняется в `e1`)
+
+2. **Работа с историей ответов (REPL):**
+   - Ввод: `e1 / 2`
+   - Вывод: `e2 = 7` (сохраняется в `e2`)
+
+3. **Степени и экспоненциальная запись (scientific notation):**
+   - Поддерживаются записи вида `5e10` ($5 \times 10^{10}$) и `1e-5` ($10^{-5}$).
+   - Ввод: `5e3 + 2.5e2`
+   - Вывод: `e3 = 5250` (сохраняется в `e3`)
+
+4. **SI приставки:**
+   - Ввод: `1.5k + 200`
+   - Вывод: `e4 = 1700` (сохраняется в `e4`)
+   - Ввод: `100m + 10u`
+   - Вывод: `e5 = 0.10001` (сохраняется в `e5`)
+   - Ввод: `1k7`
+   - Вывод: `1k7 = 1700` (приставка СИ заменяет десятичную точку в R-нотации)
+   - Ввод: `1 000 000` или `1 000 00`
+   - Вывод: `e6 = 1000000` или `e7 = 100000` (пробелы внутри чисел автоматически игнорируются)
+
+5. **Определение пользовательских переменных и констант:**
+   - Ввод: `temp = 25`
+   - Вывод: `temp = 25` (создается переменная `temp` со значением 25, сохраняется в `e6`)
+   - Ввод: `temp * 2`
+   - Вывод: `e7 = 50` (сохраняется в `e7`)
+   - Ввод: `const a = 3`
+   - Вывод: `a = 3` (создается константа `a` со значением 3)
+   - Ввод: `const a = 2`
+   - Вывод: `a = 2` (значение константы `a` обновляется)
+   - Ввод: `a = 10`
+   - Вывод: `Const Error` (попытка перезаписать константу без ключевого слова `const` запрещена)
+
+6. **Определение пользовательских функций:**
+   - Ввод: `f(x) = x^2 + 10`
+   - Вывод: `Def OK` (создается функция `f(x)`)
+   - Ввод: `f(5)`
+   - Вывод: `e8 = 35` (сохраняется в `e8`)
+
+7. **Тригонометрия в градусах:**
+   - Ввод: `sin(30)`
+   - Вывод: `e9 = 0.5`
+
+### Режим ввода переменных, скриптов и формул (Спецификация функций)
+
+Все созданные переменные, скрипты, формулы и привязки клавиш должны сохраняться в энергонезависимую память (NVS/Flash) ESP32, чтобы пользовательские настройки и наработки не терялись при перезагрузке или выключении Cardputer.
 
 ---
 
-## 📜 Scripting Engine (`Fn + S`)
+#### 💾 1. Энергонезависимая память (ПЗУ / NVS Storage)
 
-The script manager allows creating, editing, and executing multi-line C-style programs with structural logic.
+- **Автосохранение/Загрузка**: При создании или изменении переменной, функции, скрипта или бинда состояние должно автоматически записываться в NVS. При старте прошивки все данные автоматически считываются.
 
-### 1. Syntax & Features
-
-- **Conditionals**:
-
-  ```c
-  if (x > 10) {
-      print("x is large")
-  } else if (x > 5) { // or elif (x > 5)
-      print("x is medium")
-  } else {
-      print("x is small")
-  }
-  ```
-
-- **Loops**:
-  - `while (cond) { ... }`
-  - `for (i = 1; i <= 10; i++) { ... }`
-- **Assignments & Shorthands**: `i++`, `i--`, `a += b`, `a -= b`.
-- **Execution Control & Output**:
-  - `sleep(ms)` — Pause execution for specified milliseconds.
-  - `print("Text {expr}")` — Formatted printing with interpolated expressions inside curly braces.
-- **1D Arrays in Scripts**:
-  - Creation: `A = [1, 2, 3]` or `A = 1:10`.
-  - 1-based Indexing: `A[1] = 99`.
-  - Element-wise Math: `C = A .* B`, `C = A ./ B`, `C = A + B`, `C = A * 5`.
-  - Dot Product: `dot_val = A * B`.
-  - Length: `len(A)`.
-- **Safety**: Execution is hard-capped at **1,000 steps** to prevent infinite loop CPU stalls (`Error: Loop limit reached`). Variables mutated during script execution remain isolated in temporary local scope and do not taint REPL global state.
+- **Ручное управление**: Дополнительно можно предусмотреть команду сохранения настроек или кнопку во всплывающем меню.
 
 ---
 
-## 📈 2D Plotting Engine (`Fn + G`)
+#### 📋 2. Управление переменными (`fn + v`) variables
 
-Visualize functions or datasets directly on Cardputer's 1.14" display.
+Экран управления переменными отображает список всех пользовательских аргументов.
 
-### Commands & Controls
-
-- `plot(x, y)` / `plot(y)` — Plot array/vector data.
-- `plot(x, y, color, linestyle)` — Plot with custom color (`"r"`, `"g"`, `"b"`, `"c"`, `"m"`, `"y"`, `"k"`, `"w"`) and line style (`"-"`, `"--"`, `"-."`, `":"`, `""`).
-- `plot.show()` / `plot.close()` — Open / close plot display.
-- `plot.hold(1)` / `plot.hold(0)` — Retain overlay of multiple plots.
-- `plot.xlim([min, max])` / `plot.ylim([min, max])` — Manual axis limit boundaries.
-- **Interactive Controls**:
-  - **Pan**: Arrow keys (`Fn + ; / , / . / /`) or `WASD`.
-  - **Turbo Pan (5x)**: `Ctrl + Arrow` / `Ctrl + WASD`.
-  - **Zoom**: `-` (Out) / `+` or `=` (In).
-  - **Turbo Zoom (5x)**: `Ctrl + -` / `Ctrl + +`.
-  - **Auto-Scale**: `A` key.
+- **Интерфейс**: Список пар `Имя_переменной = Значение` (например, `temp = 25`).
+- **Действия**:
+  - **Редактирование**: Изменение значения выбранной переменной прямо из списка.
+  - **Удаление**: Удаление переменной из памяти для очистки места и автодополнения (кнопка `Delete`).
+  - **Создание**: Добавление новой переменной вручную.
 
 ---
 
-## ⚙️ System Parameters (`Fn + P`)
+#### 📜 3. Редактор и менеджер скриптов (`fn + s`) scripts
 
-Configure system settings stored in NVS:
+Позволяет создавать, хранить и запускать небольшие программы для автоматизации вычислений.
 
-- **Screen Timeout**: Auto-off delay in seconds (0 = always on). Any keypress wakes screen.
-- **Backlight Brightness**: Display brightness level (0 to 255).
-- **Thousands Sep**: Toggle (`ON`/`OFF`) space separator for thousands in results (e.g., `1 000 000.00`).
-- **Auto Brackets**: Toggle (`ON`/`OFF`) automatic pairing for brackets `()`, `[]`, `{}` and quotes `'`, `"`. Auto-inserts `()` on `Tab` autocompletion.
-- **Sticky Mod**: Toggle (`ON`/`OFF`) sticky modifier keys (`Fn`, `Shift`/`Aa`, `Opt`, `Ctrl`, `Alt`). Short tap (< 1s) latches modifier; long press (> 1s) releases on lift.
+- **Менеджер**: Список сохраненных скриптов. У каждого скрипта должно быть уникальное имя (например, `fibonacci`, `sensor_log`).
+- **Редактор**: Простой текстовый редактор кода.
+- **Синтаксис**: Поддерживает скрипты с синтаксисом в C-стиле (с фигурными скобками `{ }` для блоков кода):
+  - **Условные конструкции (`if / else if / elif / else`)** (поддерживаются как `else if`, так и сокращенный `elif`):
+
+    ```c
+    if (x > 10) {
+        print("x is large")
+    } else if (x > 5) { // или elif (x > 5)
+        print("x is medium")
+    } else {
+        print("x is small")
+    }
+    ```
+
+  - **Цикл `while`**:
+
+    ```c
+    while (x < 100) {
+        x = x * 2
+        print(x)
+    }
+    ```
+
+  - **Цикл `for`**:
+
+    ```c
+    for (i = 1; i <= 10; i++) {
+        print(i)
+    }
+    ```
+
+  - **Поддержка операторов присваивания и инкремента**:
+    - `i++` (эквивалентно `i = i + 1`)
+    - `i--` (эквивалентно `i = i - 1`)
+    - `a += b` (эквивалентно `a = a + (b)`)
+    - `a -= b` (эквивалентно `a = a - (b)`)
+  - **Пауза**: `sleep(ms)` — приостанавливает выполнение скрипта на указанное число миллисекунд (например, `sleep(200)`).
+  - Поддерживает вывод результатов вычислений и строк через функцию `print()`. Также поддерживается **форматированный вывод с интерполяцией**: `print("val is {x}")` (вычисляет выражение в фигурных скобках).
+  - **Отступы**: Отступы (пробелы и табуляция в начале строк) полностью игнорируются парсером.
+  - **Комментарии**: Любой текст после символа `#` считается комментарием и игнорируется.
+  - **Команды в одну строку**: Несколько выражений можно писать в одну строку, разделяя их точкой с запятой `;` (например, `x = 10; y = 20; print("{x} and {y}")`).
+
+  - **Работа с 1D-Массивами**:
+    - **Объявление**: Массивы можно задавать вручную в квадратных или круглых скобках: `A = [1, 2, 3]` или `A = (10, 20, 30)`. Также поддерживаются диапазоны: `A = 1:10` (или с шагом: `A = 1:2:10`).
+    - **Индексация (1-based)**: Доступ к элементам и запись выполняются через квадратные скобки: `A[1] = 99`. При выходе индекса за границы массива выполнение прерывается с ошибкой (например, `Error: Index 5 out of bounds`).
+    - **Операции над массивами**:
+      - `.*` — поэлементное умножение: `C = A .* B`
+      - `*` — матричное умножение (для 1D векторов возвращает их скалярное произведение, т.е. число): `dot_val = A * B`
+      - `./` — поэлементное деление: `C = A ./ B`
+      - `+` и `-` — поэлементное сложение и вычитание: `C = A + B`
+      - **Операции со скалярами**: Поддерживается умножение, деление, сложение и вычитание массива на число: `C = A * 5`, `C = A ./ 2`, `C = 10 + A`.
+      - **Длина массива**: `len(A)` — возвращает число элементов в массиве `A` (например, `len([10, 20, 30])` $\rightarrow$ вернет `3`).
+
+  - **Последовательный показ графиков из скрипта (`plot.show()`)**:
+    - Вызов `plot.show()` в скрипте приостанавливает выполнение скрипта и переключает калькулятор в интерактивный графический режим (`STATE_PLOT`).
+    - Пользователь может исследовать график (зум, панорамирование), а после выхода по `Esc` / `G0` выполнение скрипта автоматический продолжается с следующей строки. Это позволяет создавать скрипты с последовательным открытием нескольких графиков (например, сначала входной сигнал, затем его БПФ-спектр).
+
+  - **Встроенные скрипты в комплекте (`scripts/`)**:
+    - `solver.txt` — скрипт решения квадратных уравнений $ax^2+bx+c=0$ и численного нахождения корней методом бисекции (деления пополам).
+    - `ode_solver.txt` — численное решение обыкновенных дифференциальных уравнений $y'=f(x,y)$ методом Рунге-Кутты 4-го порядка (RK4).
+    - `fft.txt` — спектральный БПФ/ДПФ анализ сигнала из 3 наложенных негармонических синусоид (6.25 Гц, 15.625 Гц, 31.25 Гц) с последовательным выводом графика входного сигнала во временной области и графика частотного спектра.
+
+  - **Важные ограничения и особенности выполнения**:
+    - **Лимит шагов (инструкций)**: Во избежание зависания интерфейса и ESP32 максимальное число выполненных строк/инструкций в скрипте ограничено **1000** шагами. При превышении лимита выполнение прерывается с ошибкой `Error: Loop limit reached`.
+    - **Изоляция переменных**: Переменные, массивы и функции, созданные или измененные во время выполнения скрипта, хранятся локально во время работы скрипта. После его завершения все временные переменные и массивы вычищаются, восстанавливая глобальное состояние REPL до запуска.
+- **Действия**:
+  - `Run` (Запуск выбранного скрипта).
+  - `Edit` (Редактирование кода).
+  - `Rename` (Переименование файла скрипта).
+  - `Delete` (Удаление скрипта из памяти).
 
 ---
 
-## 📺 Display Specification & Error Handling
+#### 📈 4. Графический режим / Построение графиков (`fn + g`) plot
 
-- **Display**: 1.14" TFT display (**240 × 135 pixels**).
-- **Sticky Mode Status Bar**: Top 12px status bar displays active state indicator alongside color-coded modifier flags: `fn` (Red), `Aa` (Blue), `opt` (Cyan), `ctrl`/`alt` (Grey).
-- **Error Handling & RGB LED**:
-  Upon math or syntax error, the output text turns **bright red**, diagnostic error text is printed, and the onboard **RGB LED (`GPIO 21`)** glows bright red while holding LED power (`GPIO 38`) HIGH. Pressing any key automatically clears the error state and turns off the LED.
+Отображает визуальный график функций или массивов точек на встроенном 1.14" дисплее. Поддерживает Matplotlib-подобный синтаксис для управления отображением из REPL и скриптов:
+
+- **Синтаксис**:
+  - `plot(x, y)` — строит график по массивам точек `x` и `y`.
+  - `plot(y)` — строит график по одному вектору `y`. В этом случае по горизонтальной оси X откладывается порядковый номер точки от `1` до `len(y)`.
+  - `plot(x, y, color)` / `plot(y, color)` — строит график с указанием цвета (короткое имя или полное имя строки).
+  - `plot(x, y, linestyle)` / `plot(y, linestyle)` — строит график с указанием стиля линии.
+  - `plot(x, y, color, linestyle)` / `plot(y, color, linestyle)` — строит график с указанием цвета и стиля линии.
+  - **Доступные цвета (`color`)**:
+    - `"r"` (Красный)
+    - `"g"` (Зеленый)
+    - `"b"` (Синий)
+    - `"c"` (Циан)
+    - `"m"` (Маджента)
+    - `"y"` (Желтый)
+    - `"k"` (Черный)
+    - `"w"` (Белый)
+  - **Стили линий (`linestyle`)**:
+    - `"-"` (Сплошная линия, по умолчанию)
+    - `"--"` (Штриховая линия / пунктир)
+    - `"-."` (Штрих-пунктирная линия)
+    - `":"` (Точечная линия)
+    - `""` или `" "`  (Без линии)
+  - **Типы маркеров точек (`marker`)**:
+    - `"*"` (Звездочки)
+    - `"o"` (Кружки)
+    - `"x"` (Крестики)
+    - `"+"` (Плюсы)
+    - `""` или `" "` (Без маркеров, по умолчанию)
+  - `plot.show()` — открывает графический экран и отображает все накопленные графики.
+  - `plot.close()` — закрывает графический экран и сбрасывает накопленные графики.
+  - `plot.hold(1)` — удерживает текущий график на экране, позволяя наложить следующий график поверх него.
+  - `plot.hold(0)` — отключает удержание (по умолчанию при вызове нового `plot` предыдущие стираются).
+  - `plot.xlim([min, max])` — вручную задает диапазон отображения по оси X.
+  - `plot.ylim([min, max])` — вручную задает диапазон отображения по оси Y.
+  
+- **Интерфейс**:
+  - Двумерная координатная сетка.
+  - Масштабирование по осям (Auto-scale по максимальным/минимальным значениям).
+  - Вывод легенды и значений под курсором при навигации кнопками.
 
 ---
 
-## 🛠️ Building & Flashing
+#### ⌨️ 5. Быстрые привязки / Бинды (`fn + b`) binds
 
-### Prerequisites
+Позволяет назначать выполнение математических выражений или вставку шаблонов формул на быстрые сочетания клавиш `Alt + буква`.
 
-- [PlatformIO CLI](https://platformio.org/) or PlatformIO IDE extension.
+- **Интерфейс**: Таблица привязок, например:
+  - `Alt + S` $\rightarrow$ вставить `sin(`
+  - `Alt + P` $\rightarrow$ выполнить `temp * pi`
+- **Управление**:
+  - Кнопка **Создать (Add)**: Выбор клавиши (буквы) и ввод строки/выражения.
+  - Кнопка **Удалить (Remove)**: Очистка бинда с выбранной клавиши.
+  - Список существующих привязок для быстрого просмотра.
 
-### Clone Repository
+---
+
+#### 🧮 6. Менеджер формул (`fn + f`) formulas
+
+Менеджер сохраненных математических формул с пошаговым мастером ввода параметров и интерактивным редактором.
+
+- **Синтаксис**: Определение многопараметрических функций вида `f(x, y) = x^2 + y^2` (до 4 параметров).
+- **Режимы**:
+  - **Список формул**: Клавиши `Up/Down` (`Fn + ; / .`) — выбор формулы, `Enter` — запуск интерактивного мастера вычисления.
+  - **Создание (`[N]`) / Редактирование (`[E]`)**: Открывает поле ввода формулы с **полноценной подсветкой синтаксиса** (радужные скобки, желтые числа, циановые переменные, пурпурные константы).
+    - **Курсор**: Интерактивный циановый вертикальный курсор `|` с межсимвольным отступом.
+    - **Навигация**: `Fn + Left/Right` (`Fn + , / /`) — перемещение посимвольно; `Ctrl + Left/Right` — прыжки по словам.
+    - **Клавиша `,`**: Обычное нажатие печатает запятую `,` без сброса или скачка в начало строки.
+    - **Автодополнение**: `Tab` дополняет имена функций и переменных.
+    - **Выход**: `Esc` или ``` ` ``` возвращает к списку формул (при несохраненных изменениях выводится диалог подтверждения `Save modified formula?`).
+  - **Мастер параметров (Wizard)**: Последовательный запрос значений аргументов с автоматическим пересчетом результата по нажатию `Enter`.
+
+#### 📝 7. Очистка истории и экрана (`fn + c`) history and screen
+
+#### ⚙️ 8. Параметры системы (`fn + p`) parameters
+
+Панель настроек системы:
+
+- **Время отключения экрана**: Время бездействия в секундах, по истечении которого экран полностью отключается (0 — всегда включен). Любое нажатие клавиши пробуждает экран.
+- **Яркость подсветки**: Уровень яркости экрана (от 0 до 255).
+- **Thousands Sep**: Включение (`ON`) или выключение (`OFF`) вывода результатов с разделением тысяч пробелом (например, `1 000 000.00`).
+- **Auto Brackets**: Включение (`ON`) или выключение (`OFF`) автозакрытия скобок (`(`, `[`, `{`) и кавычек (`'`, `"`). При вводе открывающего символа автоматически дописывается парный закрывающий символ с размещением курсора между ними. Также при автодополнении функций по `Tab` автоматически вставляются скобки `()`.
+- **Sticky Mod**: Включение (`ON`) или выключение (`OFF`) режима залипания клавиш-модификаторов (`Fn`, `Shift` / `Aa`, `Opt`, `Ctrl`, `Alt`).
+  - **Одиночное нажатие** (< 1 сек): защелкивает модификатор (он остается активным для последующих нажатий).
+  - **Удержание** (> 1 сек): при отпускании отключает модификатор.
+  - Поддерживается одновременная фиксация нескольких модификаторов.
+- **Управление**:
+  - `Arrows Up/Down` или `;` / `.` -> выбор параметра.
+  - `Arrows Left/Right` или `,` / `/` или `Enter` -> переключение режимов (`ON`/`OFF`) или регулирование значений.
+  - `Esc` или `[` -> выход в REPL.
+
+#### 💡 9. Контекстная справка (`Fn + H`)
+
+При нажатии комбинации `Fn + H` на любом экране поверх интерфейса открывается всплывающее окно справки (**Modal Help Overlay**) с подсказами и комбинациями клавиш, специфичными для текущего активного режима:
+
+- **Модальное окно**: Не закрывается автоматически при отпускании `Fn`.
+- **Прокрутка справки**: При наличии более 6-7 строк справку можно прокручивать кнопками `Up / Down` (`Fn + ; / .`) или напрямую клавишами `;` и `.`. Индикатор `(; . ^ v)` в заголовке показывает наличие прокрутки.
+- **Закрытие**: Нажатие `Esc` или ``` ` ``` / `~` закрывает окно помощи и возвращает в текущий режим.
+
+#### 🔴 10. Поведение при ошибках вычислений (Error Handling & Dismissal)
+
+При возникновении ошибки вычислений (синтаксическая ошибка, деление на ноль, неизвестный токен):
+1. Строка результата окрашивается в **ярко-красный цвет** с сообщением об ошибке.
+2. Включается **красный RGB LED светодиод** (`GPIO 21` на безопасной яркости `90`).
+3. При этом шина питания LED (`GPIO 38`) **постоянно удерживается в состоянии HIGH**, предотвращая изменения яркости или "скачки" напряжения на дисплее.
+4. При нажатии любой следующей клавиши на клавиатуре сообщение об ошибке автоматически сбрасывается, светодиод гаснет, а статус вычислений возвращается в норму без зависания или отключения экрана.
+
+### 📺 8. Спецификация экрана, статус-бар и интерфейсы
+
+Разрешение встроенного экрана M5Cardputer составляет **240 × 135 пикселей**. Интерфейс спроектирован с учетом жестких ограничений дисплея для обеспечения читаемости формул и удобства управления.
+
+#### 1. Верхний статус-бар (Размер шрифта: 1)
+
+Отображается на всех экранах в верхней строке (высота: 12 пикселей) и отделен серой линией `TFT_DARKGREY`.
+
+- **Индикаторы модификаторов (Sticky Mode)**: Слева от иконки аккумулятора выводятся цветные плашки активных модификаторов:
+  - `fn` — **Красный** цвет (`#FF0000` / `0xF800`)
+  - `Aa` (Shift) — **Синий** цвет (`#0000FF` / `0x001F`)
+  - `opt` — **Бирюзовый / Циан** цвет (`#00FFFF` / `0x07FF`)
+  - `ctrl` / `alt` — **Серый** цвет (`0x7BEF`)
+
+- **Левая часть — Режим и Статус**:
+  - `Cardulator`: Основной калькулятор.
+  - `Cardulator | e#`: Основной калькулятор с указанием номера следующей ячейки истории вычислений (например, `Cardulator | e5`).
+  - `Cardulator | VARIABLES`: Экран управления переменными.
+  - `Cardulator | BINDS`: Экран назначения горячих клавиш.
+  - `Cardulator | FORMULAS` или `Formula: [имя]`: Экран выбора формул или пошаговый мастер параметров.
+  - `Cardulator | SCRIPTS` или `Editing script: [имя]`: Менеджер скриптов или текстовый редактор.
+  - `Plot: [функция] | Zoom: [масштаб]`: Графический режим.
+  - `Cardulator | HELP`: Справка.
+- **Правая часть — Батарея и питание**:
+  - **Иконка аккумулятора**: Отображает уровень заряда в виде рамки с заполняемой шкалой без текстовых процентов. Шкала окрашивается в **красный** цвет при уровне заряда ниже 20% и в **зеленый** — в остальных случаях.
+  - **Индикатор зарядки**: При подключении USB-кабеля слева от иконки батареи появляется символ **желтой молнии** ($\approx$ иконка зарядки).
+
+#### 1.5. Прокручиваемая история терминала REPL (Размер шрифта: 1)
+
+Расположена в центральной части основного экрана калькулятора (координаты `y = 13..88`) над строкой ввода.
+
+- **Отображение**: Выводит историю последних команд (префикс `>`, темно-серый цвет) и вычисленных результатов (префикс `eX =`, зеленый цвет).
+- **Вместимость**: Отображает до 6 строк истории одновременно.
+- **Прокрутка**: Прокручивается построчно вверх/вниз с помощью сочетаний клавиш `Alt + Up` и `Alt + Down`.
+
+#### 2. Поле ввода выражения (Размер шрифта: 2)
+
+Находится в нижней части экрана REPL под линией разделения (координата `y = 92`).
+
+- **Сетка символов**: Шрифт размера 2 имеет габариты символа `12 × 16` пикселей.
+- **Вместимость**: В ширину помещается до 20 символов.
+- **Курсор и скроллинг**: В позиции редактирования отображается вертикальный курсор бирюзового цвета. Поле автоматически центрирует скроллинг вокруг курсора, удерживая его в пределах видимости.
+- **Цветовая подсветка (Syntax Highlighting)**:
+  - Числа и приставки СИ (микро, мега, кило и др.) подсвечиваются **желтым**.
+  - Скобки `(` и `)` раскрашиваются в **радужные цвета** в зависимости от уровня вложенности (бирюзовый, фиолетовый, желтый, зеленый, оранжевый). Непарные скобки подсвечиваются **красным**.
+
+#### 3. Поле вывода результата (Размер шрифта: 2)
+
+Расположено в самой нижней части экрана калькулятора (координата `y = 115`) под второй разделительной линией.
+
+- **Вместимость**: До **20 символов** в ширину.
+- **Цвет статуса**:
+  - **Зеленый** — при успешном вычислении (например, `e1 = 14`).
+  - **Красный** — при возникновении математической ошибки или ошибки синтаксиса (выводится краткий текст ошибки).
+- **Ограничение длины**: Если результат или сообщение об ошибке длиннее 18 символов, строка обрезается до 18 знаков и дополняется многоточием `..` на конце (например, `1.2345678901234567..` или `Syntax Error..`).
+
+#### 4. Интерактивные экраны списков (Переменные, Бинды, Скрипты, Формулы)
+
+Используют общий стиль отображения списков:
+
+- Выбранный элемент подсвечивается горизонтальной **синей плашкой** (`TFT_BLUE`) во всю ширину экрана с белым текстом.
+- В нижней части экрана (координата `y = 115`) под серой разделительной линией отображается контекстная строка-подсказка с доступными клавишами управления (например, `Enter: Edit  Del: Delete  N: Create  Esc: Exit`).
+- При переходе в режим редактирования (например, значений переменных) внизу открывается поле ввода с желтым текстом приглашения и курсором `_`.
+
+#### 5. Графический экран (`fn + g`)
+
+Отображает интерактивную сетку с графиком функции:
+
+- **Координатные оси**: Горизонтальная ось $X$ и вертикальная ось $Y$ прорисовываются серым цветом `TFT_DARKGREY` с центром в точке пересечения.
+- **Масштаб и навигация**: Текущий график функции рисуется зеленым цветом `TFT_GREEN`. Нажатие стрелок на клавиатуре сдвигает центр координат (панорамирование), а сочетания `fn + ,` и `fn + .` изменяют масштаб по осям (приближение и отдаление).
+
+---
+
+### 🧪 Автоматическое модульное тестирование (Native Unit Testing)
+
+Проект полностью покрыт автоматическими тестами на хост-платформе Linux/macOS с использованием библиотеки Unity и окружения PlatformIO `native`:
 
 ```bash
-git clone --recursive https://github.com/aroum/cardulator.git
-cd cardulator
+# Запуск всех 20 тестов на хосте (без необходимости прошивки ESP32):
+./build_all.sh -t
 ```
 
-### Run Host Native Tests
+#### Покрытые тестами сценарии
 
-Execute native unit test suite on host OS without hardware:
-
-```bash
-pio test -e native
-```
-
-### Build & Flash to Cardputer
-
-```bash
-pio run -e cardputer -t upload
-```
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+1. `test_basic_evaluation` — базовые математические выражения и приоритеты операторов.
+2. `test_degrees_trig` — тригонометрические функции в градусах.
+3. `test_repl_history` — сохранение и адресация ячеек истории вычислений `e1`, `e2`...
+4. `test_scientific_notation_and_si_prefixes` — парсинг экспоненциальной записи (`5e3`) и СИ-приставок (`2k26` -> 2026, `1k5` -> 1500, `4M7` -> 4700000, `1n5` -> 1.5e-9).
+5. `test_formulas` — мастер формул и вычисление многопараметрических функций `hypot(x,y)`, `area(r)`.
+6. `test_user_defined_variables` & `test_user_defined_functions` — пользовательские переменные и функции.
+7. `test_autocompletion` — автодополнение по `Tab` для функций, переменных, констант и циклический выбор `si` $\rightarrow$ `sin()` $\rightarrow$ `sinh()` $\rightarrow$ `sin()`.
+8. `test_clear_all` — полная очистка памяти и переменных.
+9. `test_si_prefixes_as_variables` — сосуществование переменных с именами СИ-приставок (переменная `k` vs СИ-приставка `5k`).
+10. `test_const_definition` — константы (`const a = 3`) и защищенный доступ от переопределения.
+11. `test_multiline_functions_and_semicolon` — функции с блоком кода `fn` / `return` и точки с запятой.
+12. `test_array_operations` — массивы, поэлементные операции (`.*`, `./`), матрицы и диапазоны `1:10`.
+13. `test_script_execution` — выполнение скриптов (`fibonacci`, `while`, `for`, `if/else`).
+14. `test_plots` — генерация графических линий `plot(x, y, color, linestyle)`.
+15. `test_vectors_and_ranges` — генерация векторов `1:2:10` и индексация 1-based.
+16. `test_loops` — суммирование и циклы `sum`, `prod`, `min`, `max`.
+17. `test_print_and_e_history` — форматированный вывод `print()` и интерполяция строк `"val={e1}"`.
+18. `test_docs_scripts_files` — прямое чтение и выполнение реальных файлов скриптов из репозитория: `docs/life.txt` (1D Game of Life), `docs/plot_demo.txt` (Lissajous & curves), `docs/plot.txt` (Math & Plot demo).
+19. `test_help` — вызов и форматирование встроенной справки `help`, `help(print)`, `help(plot)`.

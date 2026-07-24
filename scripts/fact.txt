@@ -1,0 +1,19 @@
+# Set number N to compute factorial (N!)
+N = 171
+
+mantissa = 1.0
+exponent = 0
+
+# Step-by-step factorial calculation
+for (i = 2; i <= N; i++) {
+    mantissa = mantissa * i
+    
+    # Normalize mantissa if it exceeds 10
+    while (mantissa >= 10.0) {
+        mantissa = mantissa / 10.0
+        exponent = exponent + 1
+    }
+}
+
+# Output result to screen with variable interpolation
+print("{N}! = {mantissa}e{exponent}")
