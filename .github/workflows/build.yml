@@ -15,7 +15,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout repository
@@ -61,6 +62,15 @@ jobs:
         path: |
           ${{ steps.prep.outputs.bin_name }}
           cardulator.bin
+
+    - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          cardulator.bin
+          ${{ steps.prep.outputs.bin_name }}
+        generate_release_notes: true
 
     - name: Publish to M5Burner
       if: startsWith(github.ref, 'refs/tags/v') && env.M5BURNER_USER != '' && env.M5BURNER_PWD != ''
