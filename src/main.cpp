@@ -17,7 +17,7 @@ SET_LOOP_TASK_STACK_SIZE(32768);
 #include <algorithm>
 #include "config.h"
 
-#define VERSION "1.0"
+#define VERSION "1.1"
 #define SCR_W 240
 #define SCR_H 135
 #define EXPR_Y 22
