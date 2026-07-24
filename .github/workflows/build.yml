@@ -73,12 +73,16 @@ jobs:
         generate_release_notes: true
 
     - name: Publish to M5Burner
-      if: startsWith(github.ref, 'refs/tags/v') && env.M5BURNER_USER != '' && env.M5BURNER_PWD != ''
+      if: startsWith(github.ref, 'refs/tags/v')
       env:
         M5BURNER_USER: ${{ secrets.M5BURNER_USER }}
         M5BURNER_PWD: ${{ secrets.M5BURNER_PWD }}
       run: |
-        python3 scripts/m5burner_post.py --user "$M5BURNER_USER" --password "$M5BURNER_PWD" --tag "${{ steps.prep.outputs.version }}"
+        if [ -n "$M5BURNER_USER" ] && [ -n "$M5BURNER_PWD" ]; then
+          python3 scripts/m5burner_post.py --user "$M5BURNER_USER" --password "$M5BURNER_PWD" --tag "${{ steps.prep.outputs.version }}"
+        else
+          echo "M5Burner credentials missing in secrets, skipping M5Burner release."
+        fi
 
 
 
