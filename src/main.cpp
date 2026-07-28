@@ -17,7 +17,7 @@ SET_LOOP_TASK_STACK_SIZE(32768);
 #include <algorithm>
 #include "config.h"
 
-#define VERSION "1.1"
+#define VERSION "1.2"
 #define SCR_W 240
 #define SCR_H 135
 #define EXPR_Y 22
@@ -111,8 +111,25 @@ static std::vector<Formula> user_formulas;
 
 // Variables Manager state
 static int var_selected_idx = 0;
+static bool var_create_mode = false;
+static std::string var_name_buf = "";
+static bool var_name_selected = false;
 static bool var_edit_mode = false;
 static std::string var_edit_buf = "";
+static bool var_val_selected = false;
+static bool var_rename_mode = false;
+static std::string var_err_str = "";
+
+// Constants Manager state
+static int const_selected_idx = 0;
+static bool const_create_mode = false;
+static std::string const_name_buf = "";
+static bool const_name_selected = false;
+static bool const_edit_mode = false;
+static std::string const_edit_buf = "";
+static bool const_val_selected = false;
+static bool const_rename_mode = false;
+static std::string const_err_str = "";
 
 // Binds Manager state
 static int bind_selected_idx = 0;
@@ -129,6 +146,7 @@ static bool formula_wizard_has_result = false;
 static std::string formula_wizard_result_str = "";
 static bool formula_create_mode = false;
 static std::string formula_create_buf = "";
+static bool formula_create_selected = false;
 
 static bool formula_edit_mode = false;
 static std::string formula_edit_buf = "";
@@ -136,6 +154,7 @@ static std::string formula_edit_orig_buf = "";
 static int formula_cursor_pos = 0;
 static bool formula_exit_prompt_mode = false;
 static int formula_exit_selected_idx = 0; // 0 = Yes (Save), 1 = No (Discard)
+static std::string formula_err_str = "";
 
 // Scripts Manager state
 static int script_selected_idx = 0;
@@ -667,29 +686,37 @@ static void saveSDData() {}
 
 #ifdef ARDUINO
 static M5Canvas canvas(&M5Cardputer.Display);
+static bool canvas_ready = false;
+static lgfx::LovyanGFX& getGfx() {
+    if (canvas_ready) return canvas;
+    return M5Cardputer.Display;
+}
+#define GFX getGfx()
+#else
+#define GFX M5Cardputer.Display
 #endif
 
 static void drawHighlightedExpression(const std::string& expr) {
     int n = expr.size();
     if (select_all_active && n > 0) {
-        M5Cardputer.Display.setTextColor(TFT_WHITE, TFT_BLUE);
+        GFX.setTextColor(TFT_WHITE, TFT_BLUE);
         if (n > 19) {
-            M5Cardputer.Display.setCursor(2, 105);
-            M5Cardputer.Display.print(expr.substr(0, 19).c_str());
-            M5Cardputer.Display.setCursor(2, 118);
-            M5Cardputer.Display.print(expr.substr(19).c_str());
+            GFX.setCursor(2, 105);
+            GFX.print(expr.substr(0, 19).c_str());
+            GFX.setCursor(2, 118);
+            GFX.print(expr.substr(19).c_str());
         } else {
-            M5Cardputer.Display.setCursor(2, 118);
-            M5Cardputer.Display.print(expr.c_str());
+            GFX.setCursor(2, 118);
+            GFX.print(expr.c_str());
         }
-        M5Cardputer.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+        GFX.setTextColor(TFT_WHITE, TFT_BLACK);
         return;
     }
     
     if (n > 19) {
-        M5Cardputer.Display.setCursor(2, 105);
+        GFX.setCursor(2, 105);
     } else {
-        M5Cardputer.Display.setCursor(2, 118);
+        GFX.setCursor(2, 118);
     }
     
     // Calculate parenthesis/brace/bracket nesting levels globally to keep colors consistent
@@ -708,30 +735,30 @@ static void drawHighlightedExpression(const std::string& expr) {
     uint16_t rainbow[] = { TFT_CYAN, TFT_MAGENTA, TFT_YELLOW, 0x07E0, 0xFDA0 };
     int num_colors = 5;
     
-    M5Cardputer.Display.setTextColor(TFT_WHITE);
+    GFX.setTextColor(TFT_WHITE);
     for (int i = 0; i < n; ) {
         if (i == 19) {
-            M5Cardputer.Display.setCursor(2, 118);
+            GFX.setCursor(2, 118);
         }
         
         if (i == cursor_pos && !select_all_active) {
-            int cx = M5Cardputer.Display.getCursorX();
-            M5Cardputer.Display.drawFastVLine(cx > 0 ? cx - 1 : 0, M5Cardputer.Display.getCursorY(), 16, TFT_CYAN);
+            int cx = GFX.getCursorX();
+            GFX.drawFastVLine(cx > 0 ? cx - 1 : 0, GFX.getCursorY(), 16, TFT_CYAN);
         }
         
         if (expr[i] == '(' || expr[i] == '{' || expr[i] == '[') {
             int lvl = bracket_levels[i];
             uint16_t color = (lvl >= 0) ? rainbow[lvl % num_colors] : TFT_RED;
-            M5Cardputer.Display.setTextColor(color);
-            M5Cardputer.Display.print(expr[i]);
-            M5Cardputer.Display.setTextColor(TFT_WHITE);
+            GFX.setTextColor(color);
+            GFX.print(expr[i]);
+            GFX.setTextColor(TFT_WHITE);
             i++;
         } else if (expr[i] == ')' || expr[i] == '}' || expr[i] == ']') {
             int lvl = bracket_levels[i];
             uint16_t color = (lvl >= 0) ? rainbow[lvl % num_colors] : TFT_RED;
-            M5Cardputer.Display.setTextColor(color);
-            M5Cardputer.Display.print(expr[i]);
-            M5Cardputer.Display.setTextColor(TFT_WHITE);
+            GFX.setTextColor(color);
+            GFX.print(expr[i]);
+            GFX.setTextColor(TFT_WHITE);
             i++;
         } else {
             bool colored = false;
@@ -741,9 +768,9 @@ static void drawHighlightedExpression(const std::string& expr) {
             std::string prefixes = "hkMGTPdcmunpfazyEZ";
             if (c == 'Y' || prefixes.find(c) != std::string::npos) {
                 if (i > 0 && (std::isdigit(expr[i-1]) || expr[i-1] == '.')) {
-                    M5Cardputer.Display.setTextColor(TFT_YELLOW);
-                    M5Cardputer.Display.print(c);
-                    M5Cardputer.Display.setTextColor(TFT_WHITE);
+                    GFX.setTextColor(TFT_YELLOW);
+                    GFX.print(c);
+                    GFX.setTextColor(TFT_WHITE);
                     colored = true;
                     i++;
                 }
@@ -751,9 +778,9 @@ static void drawHighlightedExpression(const std::string& expr) {
             
             if (!colored) {
                 if ((c == 'e' || c == 'E') && i > 0 && std::isdigit(expr[i-1])) {
-                    M5Cardputer.Display.setTextColor(TFT_YELLOW);
-                    M5Cardputer.Display.print(c);
-                    M5Cardputer.Display.setTextColor(TFT_WHITE);
+                    GFX.setTextColor(TFT_YELLOW);
+                    GFX.print(c);
+                    GFX.setTextColor(TFT_WHITE);
                     colored = true;
                     i++;
                 }
@@ -794,29 +821,29 @@ static void drawHighlightedExpression(const std::string& expr) {
                 }
                 
                 if (is_const) {
-                    M5Cardputer.Display.setTextColor(TFT_MAGENTA);
+                    GFX.setTextColor(TFT_MAGENTA);
                 } else if (is_var) {
-                    M5Cardputer.Display.setTextColor(TFT_CYAN);
+                    GFX.setTextColor(TFT_CYAN);
                 } else {
-                    M5Cardputer.Display.setTextColor(TFT_WHITE);
+                    GFX.setTextColor(TFT_WHITE);
                 }
                 
                 for (size_t k = 0; k < id.size(); ++k) {
                     if ((start_i + (int)k) == cursor_pos && !select_all_active) {
-                        int cx = M5Cardputer.Display.getCursorX();
-                        M5Cardputer.Display.drawFastVLine(cx > 0 ? cx - 1 : 0, M5Cardputer.Display.getCursorY(), 16, TFT_CYAN);
+                        int cx = GFX.getCursorX();
+                        GFX.drawFastVLine(cx > 0 ? cx - 1 : 0, GFX.getCursorY(), 16, TFT_CYAN);
                     }
-                    M5Cardputer.Display.print(id[k]);
+                    GFX.print(id[k]);
                 }
-                M5Cardputer.Display.setTextColor(TFT_WHITE);
+                GFX.setTextColor(TFT_WHITE);
                 colored = true;
             }
             
             if (!colored) {
                 if (std::isdigit(c) || c == '.') {
-                    M5Cardputer.Display.print(c);
+                    GFX.print(c);
                 } else {
-                    M5Cardputer.Display.print(c);
+                    GFX.print(c);
                 }
                 i++;
             }
@@ -825,16 +852,16 @@ static void drawHighlightedExpression(const std::string& expr) {
     
     if (cursor_pos == n && !select_all_active) {
         if (n == 19) {
-            M5Cardputer.Display.setCursor(2, 118);
+            GFX.setCursor(2, 118);
         }
-        int cx = M5Cardputer.Display.getCursorX();
-        M5Cardputer.Display.drawFastVLine(cx > 0 ? cx - 1 : 0, M5Cardputer.Display.getCursorY(), 16, TFT_CYAN);
+        int cx = GFX.getCursorX();
+        GFX.drawFastVLine(cx > 0 ? cx - 1 : 0, GFX.getCursorY(), 16, TFT_CYAN);
     }
 }
 
 static void drawSyntaxHighlightedText(const std::string& expr, int cur_pos, int start_x, int start_y) {
     int n = expr.size();
-    M5Cardputer.Display.setCursor(start_x, start_y);
+    GFX.setCursor(start_x, start_y);
     
     std::vector<int> bracket_levels(n, 0);
     int current_level = 0;
@@ -851,26 +878,26 @@ static void drawSyntaxHighlightedText(const std::string& expr, int cur_pos, int 
     uint16_t rainbow[] = { TFT_CYAN, TFT_MAGENTA, TFT_YELLOW, 0x07E0, 0xFDA0 };
     int num_colors = 5;
     
-    M5Cardputer.Display.setTextColor(TFT_WHITE);
+    GFX.setTextColor(TFT_WHITE);
     for (int i = 0; i < n; ) {
         if (i == cur_pos) {
-            int cx = M5Cardputer.Display.getCursorX();
-            M5Cardputer.Display.drawFastVLine(cx > 0 ? cx - 1 : 0, M5Cardputer.Display.getCursorY(), 12, TFT_CYAN);
+            int cx = GFX.getCursorX();
+            GFX.drawFastVLine(cx > 0 ? cx - 1 : 0, GFX.getCursorY(), 12, TFT_CYAN);
         }
         
         if (expr[i] == '(' || expr[i] == '{' || expr[i] == '[') {
             int lvl = bracket_levels[i];
             uint16_t color = (lvl >= 0) ? rainbow[lvl % num_colors] : TFT_RED;
-            M5Cardputer.Display.setTextColor(color);
-            M5Cardputer.Display.print(expr[i]);
-            M5Cardputer.Display.setTextColor(TFT_WHITE);
+            GFX.setTextColor(color);
+            GFX.print(expr[i]);
+            GFX.setTextColor(TFT_WHITE);
             i++;
         } else if (expr[i] == ')' || expr[i] == '}' || expr[i] == ']') {
             int lvl = bracket_levels[i];
             uint16_t color = (lvl >= 0) ? rainbow[lvl % num_colors] : TFT_RED;
-            M5Cardputer.Display.setTextColor(color);
-            M5Cardputer.Display.print(expr[i]);
-            M5Cardputer.Display.setTextColor(TFT_WHITE);
+            GFX.setTextColor(color);
+            GFX.print(expr[i]);
+            GFX.setTextColor(TFT_WHITE);
             i++;
         } else {
             bool colored = false;
@@ -879,9 +906,9 @@ static void drawSyntaxHighlightedText(const std::string& expr, int cur_pos, int 
             std::string prefixes = "hkMGTPdcmunpfazyEZ";
             if (c == 'Y' || prefixes.find(c) != std::string::npos) {
                 if (i > 0 && (std::isdigit(expr[i-1]) || expr[i-1] == '.')) {
-                    M5Cardputer.Display.setTextColor(TFT_YELLOW);
-                    M5Cardputer.Display.print(c);
-                    M5Cardputer.Display.setTextColor(TFT_WHITE);
+                    GFX.setTextColor(TFT_YELLOW);
+                    GFX.print(c);
+                    GFX.setTextColor(TFT_WHITE);
                     colored = true;
                     i++;
                 }
@@ -889,9 +916,9 @@ static void drawSyntaxHighlightedText(const std::string& expr, int cur_pos, int 
             
             if (!colored) {
                 if ((c == 'e' || c == 'E') && i > 0 && std::isdigit(expr[i-1])) {
-                    M5Cardputer.Display.setTextColor(TFT_YELLOW);
-                    M5Cardputer.Display.print(c);
-                    M5Cardputer.Display.setTextColor(TFT_WHITE);
+                    GFX.setTextColor(TFT_YELLOW);
+                    GFX.print(c);
+                    GFX.setTextColor(TFT_WHITE);
                     colored = true;
                     i++;
                 }
@@ -914,31 +941,31 @@ static void drawSyntaxHighlightedText(const std::string& expr, int cur_pos, int 
                 }
                 
                 if (is_const) {
-                    M5Cardputer.Display.setTextColor(TFT_MAGENTA);
+                    GFX.setTextColor(TFT_MAGENTA);
                 } else if (is_var) {
-                    M5Cardputer.Display.setTextColor(TFT_CYAN);
+                    GFX.setTextColor(TFT_CYAN);
                 } else {
-                    M5Cardputer.Display.setTextColor(TFT_WHITE);
+                    GFX.setTextColor(TFT_WHITE);
                 }
                 
                 for (size_t k = 0; k < id.size(); ++k) {
                     if ((start_i + (int)k) == cur_pos) {
-                        int cx = M5Cardputer.Display.getCursorX();
-                        M5Cardputer.Display.drawFastVLine(cx > 0 ? cx - 1 : 0, M5Cardputer.Display.getCursorY(), 12, TFT_CYAN);
+                        int cx = GFX.getCursorX();
+                        GFX.drawFastVLine(cx > 0 ? cx - 1 : 0, GFX.getCursorY(), 12, TFT_CYAN);
                     }
-                    M5Cardputer.Display.print(id[k]);
+                    GFX.print(id[k]);
                 }
-                M5Cardputer.Display.setTextColor(TFT_WHITE);
+                GFX.setTextColor(TFT_WHITE);
                 colored = true;
             }
             
             if (!colored) {
                 if (std::isdigit(c) || c == '.') {
-                    M5Cardputer.Display.setTextColor(TFT_YELLOW);
-                    M5Cardputer.Display.print(c);
-                    M5Cardputer.Display.setTextColor(TFT_WHITE);
+                    GFX.setTextColor(TFT_YELLOW);
+                    GFX.print(c);
+                    GFX.setTextColor(TFT_WHITE);
                 } else {
-                    M5Cardputer.Display.print(c);
+                    GFX.print(c);
                 }
                 i++;
             }
@@ -946,18 +973,18 @@ static void drawSyntaxHighlightedText(const std::string& expr, int cur_pos, int 
     }
     
     if (cur_pos == n) {
-        int cx = M5Cardputer.Display.getCursorX();
-        M5Cardputer.Display.drawFastVLine(cx > 0 ? cx - 1 : 0, M5Cardputer.Display.getCursorY(), 12, TFT_CYAN);
+        int cx = GFX.getCursorX();
+        GFX.drawFastVLine(cx > 0 ? cx - 1 : 0, GFX.getCursorY(), 12, TFT_CYAN);
     }
 }
 
 static void drawStatusBar(const std::string& mode) {
-    M5Cardputer.Display.fillRect(0, 0, SCR_W, 12, TFT_BLACK);
-    M5Cardputer.Display.setTextColor(TFT_CYAN);
-    M5Cardputer.Display.setTextSize(1);
-    M5Cardputer.Display.setCursor(2, 2);
-    M5Cardputer.Display.print(mode.c_str());
-    M5Cardputer.Display.drawLine(0, 11, SCR_W, 11, TFT_DARKGREY);
+    GFX.fillRect(0, 0, SCR_W, 12, TFT_BLACK);
+    GFX.setTextColor(TFT_CYAN);
+    GFX.setTextSize(1);
+    GFX.setCursor(2, 2);
+    GFX.print(mode.c_str());
+    GFX.drawLine(0, 11, SCR_W, 11, TFT_DARKGREY);
 
     // Draw battery status on the right (without percentages)
     int bat = M5Cardputer.Power.getBatteryLevel();
@@ -968,20 +995,20 @@ static void drawStatusBar(const std::string& mode) {
     int batY = 2;
     int batW = 16;
     int batH = 8;
-    M5Cardputer.Display.drawRoundRect(batX, batY, batW, batH, 1, TFT_WHITE);
-    M5Cardputer.Display.drawRect(batX + batW, batY + 2, 2, 4, TFT_WHITE);
+    GFX.drawRoundRect(batX, batY, batW, batH, 1, TFT_WHITE);
+    GFX.drawRect(batX + batW, batY + 2, 2, 4, TFT_WHITE);
 
     int fillW = (bat * 12) / 100;
     if (fillW > 0) {
         uint16_t color = (bat < 20) ? TFT_RED : TFT_GREEN;
-        M5Cardputer.Display.fillRect(batX + 2, batY + 2, fillW, 4, color);
+        GFX.fillRect(batX + 2, batY + 2, fillW, 4, color);
     }
 
     int boltX = batX - 8;
     if (M5Cardputer.Power.isCharging() == m5::Power_Class::is_charging) {
-        M5Cardputer.Display.drawLine(boltX + 2, batY, boltX + 4, batY + 4, TFT_YELLOW);
-        M5Cardputer.Display.drawLine(boltX + 4, batY + 4, boltX + 1, batY + 4, TFT_YELLOW);
-        M5Cardputer.Display.drawLine(boltX + 1, batY + 4, boltX + 3, batY + 8, TFT_YELLOW);
+        GFX.drawLine(boltX + 2, batY, boltX + 4, batY + 4, TFT_YELLOW);
+        GFX.drawLine(boltX + 4, batY + 4, boltX + 1, batY + 4, TFT_YELLOW);
+        GFX.drawLine(boltX + 1, batY + 4, boltX + 3, batY + 8, TFT_YELLOW);
     }
 
     // Draw active modifier badges to the left of battery
@@ -995,10 +1022,10 @@ static void drawStatusBar(const std::string& mode) {
         int badge_w = label_len * 6 + 3;
         int badge_x = badgeRightX - badge_w;
         if (badge_x > 80) {
-            M5Cardputer.Display.fillRect(badge_x, 1, badge_w, 9, bg_color);
-            M5Cardputer.Display.setTextColor(text_color);
-            M5Cardputer.Display.setCursor(badge_x + 2, 2);
-            M5Cardputer.Display.print(label);
+            GFX.fillRect(badge_x, 1, badge_w, 9, bg_color);
+            GFX.setTextColor(text_color);
+            GFX.setCursor(badge_x + 2, 2);
+            GFX.print(label);
             badgeRightX = badge_x - 3;
         }
     };
@@ -1050,13 +1077,13 @@ static void drawHelpPopup() {
     int x = (SCR_W - w) / 2;
     int y = (SCR_H - h) / 2;
     
-    M5Cardputer.Display.fillRect(x, y, w, h, 0x18E3 /* dark grey */);
-    M5Cardputer.Display.drawRect(x, y, w, h, TFT_WHITE);
-    M5Cardputer.Display.drawRect(x + 1, y + 1, w - 2, h - 2, TFT_CYAN);
+    GFX.fillRect(x, y, w, h, 0x18E3 /* dark grey */);
+    GFX.drawRect(x, y, w, h, TFT_WHITE);
+    GFX.drawRect(x + 1, y + 1, w - 2, h - 2, TFT_CYAN);
     
-    M5Cardputer.Display.setTextSize(1);
-    M5Cardputer.Display.setTextColor(TFT_YELLOW);
-    M5Cardputer.Display.setCursor(x + 8, y + 6);
+    GFX.setTextSize(1);
+    GFX.setTextColor(TFT_YELLOW);
+    GFX.setCursor(x + 8, y + 6);
     
     std::string title;
     std::vector<std::string> raw_lines;
@@ -1072,20 +1099,20 @@ static void drawHelpPopup() {
         help_popup_scroll_offset = 0;
     }
     
-    M5Cardputer.Display.print(title.c_str());
-    M5Cardputer.Display.drawLine(x, y + 18, x + w, y + 18, TFT_DARKGREY);
+    GFX.print(title.c_str());
+    GFX.drawLine(x, y + 18, x + w, y + 18, TFT_DARKGREY);
     
     int lineY = y + 22;
-    M5Cardputer.Display.setTextColor(TFT_WHITE);
+    GFX.setTextColor(TFT_WHITE);
     for (int i = help_popup_scroll_offset; i < (int)lines.size() && (i - help_popup_scroll_offset) < 5; ++i) {
-        M5Cardputer.Display.setCursor(x + 8, lineY);
-        M5Cardputer.Display.print(lines[i].c_str());
+        GFX.setCursor(x + 8, lineY);
+        GFX.print(lines[i].c_str());
         lineY += 15;
     }
 }
 
 static void drawCalc() {
-    M5Cardputer.Display.fillScreen(TFT_BLACK);
+    GFX.fillScreen(TFT_BLACK);
     
     std::string modeStr = "Cardulator";
     if (history.size() > 0) {
@@ -1143,74 +1170,72 @@ static void drawCalc() {
     }
     
     int start_from = total_h_lines - 1 - history_scroll_offset;
-    M5Cardputer.Display.setTextSize(1);
+    GFX.setTextSize(1);
     
     for (int k = 0; k < max_history_lines; ++k) {
         int idx = start_from - (max_history_lines - 1 - k);
         if (idx >= 0 && idx < total_h_lines) {
             int draw_y = y_start - (max_history_lines - 1 - k) * line_height;
-            M5Cardputer.Display.setCursor(2, draw_y);
-            M5Cardputer.Display.setTextColor(flat_repl_lines[idx].color);
-            M5Cardputer.Display.print(flat_repl_lines[idx].text.c_str());
+            GFX.setCursor(2, draw_y);
+            GFX.setTextColor(flat_repl_lines[idx].color);
+            GFX.print(flat_repl_lines[idx].text.c_str());
         }
     }
 
     // 2. Draw separators and input field at the bottom
     if (expression.size() > 19) {
-        M5Cardputer.Display.drawLine(0, 101, SCR_W, 101, TFT_DARKGREY);
+        GFX.drawLine(0, 101, SCR_W, 101, TFT_DARKGREY);
     } else {
-        M5Cardputer.Display.drawLine(0, 114, SCR_W, 114, TFT_DARKGREY);
+        GFX.drawLine(0, 114, SCR_W, 114, TFT_DARKGREY);
     }
 
-    M5Cardputer.Display.setTextSize(EXPR_SIZE);
+    GFX.setTextSize(EXPR_SIZE);
     if (hasError) {
-        M5Cardputer.Display.setTextColor(TFT_RED);
+        GFX.setTextColor(TFT_RED);
         std::string err_disp = resultStr;
         if (err_disp.size() > 19) {
-            M5Cardputer.Display.setCursor(2, 105);
-            M5Cardputer.Display.print(err_disp.substr(0, 19).c_str());
-            M5Cardputer.Display.setCursor(2, 118);
-            M5Cardputer.Display.print(err_disp.substr(19).c_str());
+            GFX.setCursor(2, 105);
+            GFX.print(err_disp.substr(0, 19).c_str());
+            GFX.setCursor(2, 118);
+            GFX.print(err_disp.substr(19).c_str());
         } else {
-            M5Cardputer.Display.setCursor(2, 118);
-            M5Cardputer.Display.print(err_disp.c_str());
+            GFX.setCursor(2, 118);
+            GFX.print(err_disp.c_str());
         }
     } else {
-        M5Cardputer.Display.setCursor(2, 118);
+        GFX.setCursor(2, 118);
         drawHighlightedExpression(expression);
     }
 
-    // Commented out standalone result line to keep input line at bottom:
-    // M5Cardputer.Display.setTextSize(2);
-    // M5Cardputer.Display.setTextColor(hasError ? TFT_RED : TFT_GREEN);
-    // std::string res = resultStr;
-    // if (res.size() > 18) res = res.substr(0, 18) + "..";
-    // M5Cardputer.Display.setCursor(2, 115);
-    // M5Cardputer.Display.print(res.c_str());
+    #ifdef ARDUINO
+    if (canvas_ready) {
+        canvas.pushSprite(0, 0);
+    }
+    #endif
 }
 
 static void drawHelpView() {
-    M5Cardputer.Display.fillScreen(TFT_BLACK);
+    GFX.fillScreen(TFT_BLACK);
     std::string title;
     std::vector<std::string> left_col, right_col;
     getHelpViewData(title, left_col, right_col);
     
     drawStatusBar(title.c_str());
-    M5Cardputer.Display.setTextSize(1);
+    GFX.setTextSize(1);
     int y = 15;
     
     for (size_t i = 0; i < left_col.size(); ++i) {
-        M5Cardputer.Display.setCursor(2, y + (int)i * 10);
-        if (i == 0) M5Cardputer.Display.setTextColor(TFT_CYAN);
-        else M5Cardputer.Display.setTextColor(TFT_WHITE);
-        M5Cardputer.Display.print(left_col[i].c_str());
+        GFX.setCursor(2, y + (int)i * 10);
+        if (i == 0) GFX.setTextColor(TFT_CYAN);
+        else GFX.setTextColor(TFT_WHITE);
+        GFX.print(left_col[i].c_str());
     }
     
     for (size_t i = 0; i < right_col.size(); ++i) {
-        M5Cardputer.Display.setCursor(130, y + (int)i * 10);
-        if (i == 0) M5Cardputer.Display.setTextColor(TFT_CYAN);
-        else M5Cardputer.Display.setTextColor(TFT_WHITE);
-        M5Cardputer.Display.print(right_col[i].c_str());
+        GFX.setCursor(130, y + (int)i * 10);
+        if (i == 0) GFX.setTextColor(TFT_CYAN);
+        else GFX.setTextColor(TFT_WHITE);
+        GFX.print(right_col[i].c_str());
     }
 }
 
@@ -1219,48 +1244,48 @@ static void drawConfirmModal(const char* title, int selected_idx) {
     int popup_h = 52;
     int popup_x = (SCR_W - popup_w) / 2;
     int popup_y = (SCR_H - popup_h) / 2;
-    M5Cardputer.Display.fillRect(popup_x, popup_y, popup_w, popup_h, 0x18E3 /* dark grey */);
-    M5Cardputer.Display.drawRect(popup_x, popup_y, popup_w, popup_h, TFT_WHITE);
-    M5Cardputer.Display.drawRect(popup_x + 1, popup_y + 1, popup_w - 2, popup_h - 2, TFT_CYAN);
+    GFX.fillRect(popup_x, popup_y, popup_w, popup_h, 0x18E3 /* dark grey */);
+    GFX.drawRect(popup_x, popup_y, popup_w, popup_h, TFT_WHITE);
+    GFX.drawRect(popup_x + 1, popup_y + 1, popup_w - 2, popup_h - 2, TFT_CYAN);
     
-    M5Cardputer.Display.setTextSize(1);
-    M5Cardputer.Display.setTextColor(TFT_WHITE);
-    M5Cardputer.Display.setCursor(popup_x + (popup_w - strlen(title) * 6) / 2, popup_y + 10);
-    M5Cardputer.Display.print(title);
+    GFX.setTextSize(1);
+    GFX.setTextColor(TFT_WHITE);
+    GFX.setCursor(popup_x + (popup_w - strlen(title) * 6) / 2, popup_y + 10);
+    GFX.print(title);
 
     if (selected_idx == 0) {
-        M5Cardputer.Display.setTextColor(TFT_YELLOW, TFT_BLUE);
-        M5Cardputer.Display.setCursor(popup_x + 35, popup_y + 32);
-        M5Cardputer.Display.print(" [ Yes ] ");
-        M5Cardputer.Display.setTextColor(TFT_WHITE, 0x18E3);
-        M5Cardputer.Display.setCursor(popup_x + 105, popup_y + 32);
-        M5Cardputer.Display.print("   No   ");
+        GFX.setTextColor(TFT_YELLOW, TFT_BLUE);
+        GFX.setCursor(popup_x + 35, popup_y + 32);
+        GFX.print(" [ Yes ] ");
+        GFX.setTextColor(TFT_WHITE, 0x18E3);
+        GFX.setCursor(popup_x + 105, popup_y + 32);
+        GFX.print("   No   ");
     } else {
-        M5Cardputer.Display.setTextColor(TFT_WHITE, 0x18E3);
-        M5Cardputer.Display.setCursor(popup_x + 35, popup_y + 32);
-        M5Cardputer.Display.print("   Yes  ");
-        M5Cardputer.Display.setTextColor(TFT_YELLOW, TFT_BLUE);
-        M5Cardputer.Display.setCursor(popup_x + 105, popup_y + 32);
-        M5Cardputer.Display.print(" [ No ] ");
+        GFX.setTextColor(TFT_WHITE, 0x18E3);
+        GFX.setCursor(popup_x + 35, popup_y + 32);
+        GFX.print("   Yes  ");
+        GFX.setTextColor(TFT_YELLOW, TFT_BLUE);
+        GFX.setCursor(popup_x + 105, popup_y + 32);
+        GFX.print(" [ No ] ");
     }
-    M5Cardputer.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+    GFX.setTextColor(TFT_WHITE, TFT_BLACK);
 }
 
 static void drawVars() {
-    M5Cardputer.Display.fillScreen(TFT_BLACK);
+    GFX.fillScreen(TFT_BLACK);
     drawStatusBar("Cardulator | VARIABLES");
     
     int y = 15;
-    M5Cardputer.Display.setTextSize(1);
+    GFX.setTextSize(1);
     
     size_t total_vars = history.size() + user_args.size();
     
     if (total_vars == 0) {
-        M5Cardputer.Display.setTextColor(TFT_DARKGREY);
-        M5Cardputer.Display.setCursor(10, y + 20);
-        M5Cardputer.Display.print("No variables. Press 'N' to create.");
+        GFX.setTextColor(TFT_DARKGREY);
+        GFX.setCursor(10, y + 20);
+        GFX.print("No variables. Press 'N' to create.");
     } else {
-        int max_vis = var_edit_mode ? 6 : 8;
+        int max_vis = (var_edit_mode || var_create_mode) ? 6 : 8;
         int start = 0;
         if (var_selected_idx >= max_vis) {
             start = var_selected_idx - (max_vis - 1);
@@ -1277,24 +1302,42 @@ static void drawVars() {
                 val = user_args[u_idx].val;
             }
             if (i == var_selected_idx) {
-                M5Cardputer.Display.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
-                M5Cardputer.Display.setTextColor(TFT_WHITE);
+                GFX.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
+                GFX.setTextColor(TFT_WHITE);
             } else {
-                M5Cardputer.Display.setTextColor(TFT_WHITE);
+                GFX.setTextColor(TFT_WHITE);
             }
-            M5Cardputer.Display.setCursor(5, y + (i - start) * 14);
+            GFX.setCursor(5, y + (i - start) * 14);
             char line[64];
             snprintf(line, sizeof(line), "%s = %s", name.c_str(), fmtNum(val).c_str());
-            M5Cardputer.Display.print(line);
+            GFX.print(line);
         }
     }
     
-    if (var_edit_mode) {
-        M5Cardputer.Display.drawLine(0, 110, SCR_W, 110, TFT_DARKGREY);
-        M5Cardputer.Display.setCursor(5, 115);
-        M5Cardputer.Display.setTextColor(TFT_YELLOW);
-        M5Cardputer.Display.print("Edit value: ");
-        M5Cardputer.Display.print(var_edit_buf.c_str());
+    if (var_create_mode || var_rename_mode || var_edit_mode) {
+        GFX.drawLine(0, 105, SCR_W, 105, TFT_DARKGREY);
+        GFX.setCursor(5, 108);
+        GFX.setTextColor(TFT_YELLOW);
+        if (var_create_mode) GFX.print("Var Name: ");
+        else if (var_rename_mode) GFX.print("Rename Var: ");
+        else GFX.print("Edit value: ");
+        
+        std::string buf = (var_create_mode || var_rename_mode) ? var_name_buf : var_edit_buf;
+        bool sel = (var_create_mode || var_rename_mode) ? var_name_selected : var_val_selected;
+        if (sel) {
+            GFX.setTextColor(TFT_WHITE, TFT_BLUE);
+            GFX.print(buf.c_str());
+            GFX.setTextColor(TFT_WHITE, TFT_BLACK);
+        } else {
+            GFX.setTextColor(TFT_CYAN);
+            GFX.print(buf.c_str());
+            GFX.drawFastVLine(GFX.getCursorX(), GFX.getCursorY(), 10, TFT_CYAN);
+        }
+        if (!var_err_str.empty()) {
+            GFX.setCursor(5, 122);
+            GFX.setTextColor(TFT_RED);
+            GFX.print(var_err_str.c_str());
+        }
     }
 
     if (delete_confirm_prompt_mode) {
@@ -1302,47 +1345,61 @@ static void drawVars() {
     }
 }
 
-static int const_selected_idx = 0;
-static bool const_edit_mode = false;
-static std::string const_edit_buf = "";
-
 static void drawConsts() {
-    M5Cardputer.Display.fillScreen(TFT_BLACK);
+    GFX.fillScreen(TFT_BLACK);
     drawStatusBar("Cardulator | CONSTANTS");
     
     int y = 15;
-    M5Cardputer.Display.setTextSize(1);
+    GFX.setTextSize(1);
     
     if (user_consts.empty()) {
-        M5Cardputer.Display.setTextColor(TFT_DARKGREY);
-        M5Cardputer.Display.setCursor(10, y + 20);
-        M5Cardputer.Display.print("No constants. Press 'N' to create.");
+        GFX.setTextColor(TFT_DARKGREY);
+        GFX.setCursor(10, y + 20);
+        GFX.print("No constants. Press 'N' to create.");
     } else {
-        int max_vis = const_edit_mode ? 6 : 8;
+        int max_vis = (const_edit_mode || const_create_mode || const_rename_mode) ? 6 : 8;
         int start = 0;
         if (const_selected_idx >= max_vis) {
             start = const_selected_idx - (max_vis - 1);
         }
         for (int i = start; i < (int)user_consts.size() && i < start + max_vis; ++i) {
             if (i == const_selected_idx) {
-                M5Cardputer.Display.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
-                M5Cardputer.Display.setTextColor(TFT_WHITE);
+                GFX.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
+                GFX.setTextColor(TFT_WHITE);
             } else {
-                M5Cardputer.Display.setTextColor(TFT_WHITE);
+                GFX.setTextColor(TFT_WHITE);
             }
-            M5Cardputer.Display.setCursor(5, y + (i - start) * 14);
+            GFX.setCursor(5, y + (i - start) * 14);
             char line[64];
             snprintf(line, sizeof(line), "%s = %s", user_consts[i].name.c_str(), fmtNum(user_consts[i].val).c_str());
-            M5Cardputer.Display.print(line);
+            GFX.print(line);
         }
     }
     
-    if (const_edit_mode) {
-        M5Cardputer.Display.drawLine(0, 110, SCR_W, 110, TFT_DARKGREY);
-        M5Cardputer.Display.setCursor(5, 115);
-        M5Cardputer.Display.setTextColor(TFT_YELLOW);
-        M5Cardputer.Display.print("Edit value: ");
-        M5Cardputer.Display.print(const_edit_buf.c_str());
+    if (const_create_mode || const_rename_mode || const_edit_mode) {
+        GFX.drawLine(0, 105, SCR_W, 105, TFT_DARKGREY);
+        GFX.setCursor(5, 108);
+        GFX.setTextColor(TFT_YELLOW);
+        if (const_create_mode) GFX.print("Const Name: ");
+        else if (const_rename_mode) GFX.print("Rename Const: ");
+        else GFX.print("Edit value: ");
+        
+        std::string buf = (const_create_mode || const_rename_mode) ? const_name_buf : const_edit_buf;
+        bool sel = (const_create_mode || const_rename_mode) ? const_name_selected : const_val_selected;
+        if (sel) {
+            GFX.setTextColor(TFT_WHITE, TFT_BLUE);
+            GFX.print(buf.c_str());
+            GFX.setTextColor(TFT_WHITE, TFT_BLACK);
+        } else {
+            GFX.setTextColor(TFT_CYAN);
+            GFX.print(buf.c_str());
+            GFX.drawFastVLine(GFX.getCursorX(), GFX.getCursorY(), 10, TFT_CYAN);
+        }
+        if (!const_err_str.empty()) {
+            GFX.setCursor(5, 122);
+            GFX.setTextColor(TFT_RED);
+            GFX.print(const_err_str.c_str());
+        }
     }
 
     if (delete_confirm_prompt_mode) {
@@ -1351,16 +1408,16 @@ static void drawConsts() {
 }
 
 static void drawBinds() {
-    M5Cardputer.Display.fillScreen(TFT_BLACK);
+    GFX.fillScreen(TFT_BLACK);
     drawStatusBar("Cardulator | BINDS");
     
     int y = 15;
-    M5Cardputer.Display.setTextSize(1);
+    GFX.setTextSize(1);
     
     if (user_binds.empty()) {
-        M5Cardputer.Display.setTextColor(TFT_DARKGREY);
-        M5Cardputer.Display.setCursor(10, y + 20);
-        M5Cardputer.Display.print("No binds. Press 'N' to create.");
+        GFX.setTextColor(TFT_DARKGREY);
+        GFX.setCursor(10, y + 20);
+        GFX.print("No binds. Press 'N' to create.");
     } else {
         int max_vis = bind_edit_mode ? 6 : 8;
         int start = 0;
@@ -1369,24 +1426,24 @@ static void drawBinds() {
         }
         for (int i = start; i < (int)user_binds.size() && i < start + max_vis; ++i) {
             if (i == bind_selected_idx) {
-                M5Cardputer.Display.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
-                M5Cardputer.Display.setTextColor(TFT_WHITE);
+                GFX.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
+                GFX.setTextColor(TFT_WHITE);
             } else {
-                M5Cardputer.Display.setTextColor(TFT_WHITE);
+                GFX.setTextColor(TFT_WHITE);
             }
-            M5Cardputer.Display.setCursor(5, y + (i - start) * 14);
+            GFX.setCursor(5, y + (i - start) * 14);
             char line[64];
             snprintf(line, sizeof(line), "Alt + %c  =>  %s", user_binds[i].key, user_binds[i].action.c_str());
-            M5Cardputer.Display.print(line);
+            GFX.print(line);
         }
     }
     
     if (bind_edit_mode) {
-        M5Cardputer.Display.drawLine(0, 110, SCR_W, 110, TFT_DARKGREY);
-        M5Cardputer.Display.setCursor(5, 115);
-        M5Cardputer.Display.setTextColor(TFT_YELLOW);
-        M5Cardputer.Display.print("Edit action: ");
-        M5Cardputer.Display.print(bind_edit_buf.c_str());
+        GFX.drawLine(0, 110, SCR_W, 110, TFT_DARKGREY);
+        GFX.setCursor(5, 115);
+        GFX.setTextColor(TFT_YELLOW);
+        GFX.print("Edit action: ");
+        GFX.print(bind_edit_buf.c_str());
     }
 
     if (delete_confirm_prompt_mode) {
@@ -1395,7 +1452,7 @@ static void drawBinds() {
 }
 
 static void drawFormulas() {
-    M5Cardputer.Display.fillScreen(TFT_BLACK);
+    GFX.fillScreen(TFT_BLACK);
 
     if (formula_edit_mode) {
         if (formula_exit_prompt_mode) {
@@ -1404,27 +1461,43 @@ static void drawFormulas() {
         }
 
         drawStatusBar("Edit Formula (Max 4 args)");
-        M5Cardputer.Display.setTextSize(1);
-        M5Cardputer.Display.setTextColor(TFT_WHITE);
-        M5Cardputer.Display.setCursor(10, 25);
-        M5Cardputer.Display.print("Format: f(a,b)=a^2+b");
-        M5Cardputer.Display.setCursor(10, 45);
-        M5Cardputer.Display.setTextColor(TFT_YELLOW);
-        M5Cardputer.Display.print("> ");
-        drawSyntaxHighlightedText(formula_edit_buf, formula_cursor_pos, M5Cardputer.Display.getCursorX(), M5Cardputer.Display.getCursorY());
+        GFX.setTextSize(1);
+        GFX.setTextColor(TFT_WHITE);
+        GFX.setCursor(10, 25);
+        GFX.print("Format: f(a,b)=a^2+b");
+        GFX.setCursor(10, 45);
+        GFX.setTextColor(TFT_YELLOW);
+        GFX.print("> ");
+        drawSyntaxHighlightedText(formula_edit_buf, formula_cursor_pos, GFX.getCursorX(), GFX.getCursorY());
         return;
     }
     
     if (formula_create_mode) {
+        if (formula_exit_prompt_mode) {
+            drawConfirmModal("Save new formula?", formula_exit_selected_idx);
+            return;
+        }
+
         drawStatusBar("New Formula (Max 4 args)");
-        M5Cardputer.Display.setTextSize(1);
-        M5Cardputer.Display.setTextColor(TFT_WHITE);
-        M5Cardputer.Display.setCursor(10, 25);
-        M5Cardputer.Display.print("Format: f(a,b)=a^2+b");
-        M5Cardputer.Display.setCursor(10, 45);
-        M5Cardputer.Display.setTextColor(TFT_YELLOW);
-        M5Cardputer.Display.print("> ");
-        drawSyntaxHighlightedText(formula_create_buf, formula_cursor_pos, M5Cardputer.Display.getCursorX(), M5Cardputer.Display.getCursorY());
+        GFX.setTextSize(1);
+        GFX.setTextColor(TFT_WHITE);
+        GFX.setCursor(10, 25);
+        GFX.print("Format: f(a,b)=a^2+b");
+        GFX.setCursor(10, 45);
+        GFX.setTextColor(TFT_YELLOW);
+        GFX.print("> ");
+        if (formula_create_selected) {
+            GFX.setTextColor(TFT_WHITE, TFT_BLUE);
+            GFX.print(formula_create_buf.c_str());
+            GFX.setTextColor(TFT_WHITE, TFT_BLACK);
+        } else {
+            drawSyntaxHighlightedText(formula_create_buf, formula_cursor_pos, GFX.getCursorX(), GFX.getCursorY());
+        }
+        if (!formula_err_str.empty()) {
+            GFX.setCursor(10, 65);
+            GFX.setTextColor(TFT_RED);
+            GFX.print(formula_err_str.c_str());
+        }
         return;
     }
     
@@ -1432,33 +1505,33 @@ static void drawFormulas() {
         const auto& f = user_formulas[formula_selected_idx];
         drawStatusBar("Formula: " + f.name);
         
-        M5Cardputer.Display.setTextSize(1);
-        M5Cardputer.Display.setTextColor(TFT_CYAN);
-        M5Cardputer.Display.setCursor(5, 16);
-        M5Cardputer.Display.print("Expr: ");
-        M5Cardputer.Display.setTextColor(TFT_WHITE);
-        M5Cardputer.Display.print(f.expr.c_str());
+        GFX.setTextSize(1);
+        GFX.setTextColor(TFT_CYAN);
+        GFX.setCursor(5, 16);
+        GFX.print("Expr: ");
+        GFX.setTextColor(TFT_WHITE);
+        GFX.print(f.expr.c_str());
         
         int y_start = 30;
         int p_count = std::min(4, (int)f.params.size());
         for (int i = 0; i < p_count; ++i) {
             int y = y_start + i * 14;
             if (i == formula_wizard_param_idx) {
-                M5Cardputer.Display.fillRect(0, y - 1, SCR_W, 13, 0x0015 /* dark blue */);
-                M5Cardputer.Display.setTextColor(TFT_YELLOW);
-                M5Cardputer.Display.setCursor(5, y);
-                M5Cardputer.Display.print("-> ");
+                GFX.fillRect(0, y - 1, SCR_W, 13, 0x0015 /* dark blue */);
+                GFX.setTextColor(TFT_YELLOW);
+                GFX.setCursor(5, y);
+                GFX.print("-> ");
             } else {
-                M5Cardputer.Display.setTextColor(TFT_WHITE);
-                M5Cardputer.Display.setCursor(5, y);
-                M5Cardputer.Display.print("   ");
+                GFX.setTextColor(TFT_WHITE);
+                GFX.setCursor(5, y);
+                GFX.print("   ");
             }
-            M5Cardputer.Display.print(f.params[i].c_str());
-            M5Cardputer.Display.print(" = ");
+            GFX.print(f.params[i].c_str());
+            GFX.print(" = ");
             if (i < (int)formula_wizard_bufs.size()) {
-                M5Cardputer.Display.print(formula_wizard_bufs[i].c_str());
+                GFX.print(formula_wizard_bufs[i].c_str());
                 if (i == formula_wizard_param_idx) {
-                    M5Cardputer.Display.drawFastVLine(M5Cardputer.Display.getCursorX(), M5Cardputer.Display.getCursorY(), 10, TFT_CYAN);
+                    GFX.drawFastVLine(GFX.getCursorX(), GFX.getCursorY(), 10, TFT_CYAN);
                 }
             }
         }
@@ -1469,14 +1542,14 @@ static void drawFormulas() {
             int card_h = 24;
             int card_w = SCR_W - 8;
             int card_x = 4;
-            M5Cardputer.Display.fillRect(card_x, card_y, card_w, card_h, 0x10A2 /* dark navy/grey */);
-            M5Cardputer.Display.drawRect(card_x, card_y, card_w, card_h, TFT_CYAN);
+            GFX.fillRect(card_x, card_y, card_w, card_h, 0x10A2 /* dark navy/grey */);
+            GFX.drawRect(card_x, card_y, card_w, card_h, TFT_CYAN);
             
-            M5Cardputer.Display.setCursor(card_x + 6, card_y + 7);
-            M5Cardputer.Display.setTextColor(TFT_GREEN);
-            M5Cardputer.Display.print("Result: ");
-            M5Cardputer.Display.setTextColor(TFT_YELLOW);
-            M5Cardputer.Display.print(formula_wizard_result_str.c_str());
+            GFX.setCursor(card_x + 6, card_y + 7);
+            GFX.setTextColor(TFT_GREEN);
+            GFX.print("Result: ");
+            GFX.setTextColor(TFT_YELLOW);
+            GFX.print(formula_wizard_result_str.c_str());
         }
         
         return;
@@ -1485,15 +1558,15 @@ static void drawFormulas() {
     // Normal Formulas List View
     drawStatusBar("Cardulator | FORMULAS");
     int y = 15;
-    M5Cardputer.Display.setTextSize(1);
+    GFX.setTextSize(1);
     
     if (user_formulas.empty()) {
-        M5Cardputer.Display.setTextColor(TFT_DARKGREY);
-        M5Cardputer.Display.setCursor(10, y + 20);
-        M5Cardputer.Display.print("No formulas available.");
-        M5Cardputer.Display.setCursor(10, y + 40);
-        M5Cardputer.Display.setTextColor(TFT_YELLOW);
-        M5Cardputer.Display.print("Press [N] to create a formula.");
+        GFX.setTextColor(TFT_DARKGREY);
+        GFX.setCursor(10, y + 20);
+        GFX.print("No formulas available.");
+        GFX.setCursor(10, y + 40);
+        GFX.setTextColor(TFT_YELLOW);
+        GFX.print("Press [N] to create a formula.");
     } else {
         int max_vis = 8;
         int start = 0;
@@ -1503,12 +1576,12 @@ static void drawFormulas() {
         for (int i = start; i < (int)user_formulas.size() && i < start + max_vis; ++i) {
             int line_y = y + (i - start) * 14;
             if (i == formula_selected_idx) {
-                M5Cardputer.Display.fillRect(0, line_y - 1, SCR_W, 13, TFT_BLUE);
-                M5Cardputer.Display.setTextColor(TFT_YELLOW);
+                GFX.fillRect(0, line_y - 1, SCR_W, 13, TFT_BLUE);
+                GFX.setTextColor(TFT_YELLOW);
             } else {
-                M5Cardputer.Display.setTextColor(TFT_WHITE);
+                GFX.setTextColor(TFT_WHITE);
             }
-            M5Cardputer.Display.setCursor(5, line_y);
+            GFX.setCursor(5, line_y);
             char line_buf[128];
             std::string params_str = "";
             for (size_t p = 0; p < user_formulas[i].params.size() && p < 4; ++p) {
@@ -1516,7 +1589,7 @@ static void drawFormulas() {
             }
             if (!params_str.empty()) params_str.pop_back();
             snprintf(line_buf, sizeof(line_buf), "%s(%s) = %s", user_formulas[i].name.c_str(), params_str.c_str(), user_formulas[i].expr.c_str());
-            M5Cardputer.Display.print(line_buf);
+            GFX.print(line_buf);
         }
         
         if (delete_confirm_prompt_mode) {
@@ -1533,7 +1606,7 @@ inline void drawDashedLine(int x0, int y0, int x1, int y1, uint16_t color, int d
     int cycle = dash_len + gap_len;
     while (true) {
         if (count % cycle < dash_len) {
-            M5Cardputer.Display.drawPixel(x0, y0, color);
+            GFX.drawPixel(x0, y0, color);
         }
         count++;
         if (x0 == x1 && y0 == y1) break;
@@ -1551,7 +1624,7 @@ inline void drawDashDotLine(int x0, int y0, int x1, int y1, uint16_t color) {
     while (true) {
         int mod = count % 12;
         if (mod < 5 || mod == 8) {
-            M5Cardputer.Display.drawPixel(x0, y0, color);
+            GFX.drawPixel(x0, y0, color);
         }
         count++;
         if (x0 == x1 && y0 == y1) break;
@@ -1562,7 +1635,15 @@ inline void drawDashDotLine(int x0, int y0, int x1, int y1, uint16_t color) {
 }
 
 static void drawPlot() {
-    M5Cardputer.Display.fillScreen(TFT_BLACK);
+    #ifdef ARDUINO
+    if (!canvas_ready) {
+        canvas.createSprite(SCR_W, SCR_H);
+        canvas_ready = true;
+    }
+    canvas.fillScreen(TFT_BLACK);
+    #else
+    GFX.fillScreen(TFT_BLACK);
+    #endif
     
     char status[64];
     snprintf(status, sizeof(status), "Plot | Lines: %d | Zoom: %.1f", (int)plot_lines.size(), 1.0 / plot_scale);
@@ -1625,11 +1706,51 @@ static void drawPlot() {
     
     int cy = 12 + (max_y / range_y) * (SCR_H - 12);
     int cx = (0.0 - min_x) / range_x * SCR_W;
+    
+    #ifdef ARDUINO
+    if (canvas_ready) {
+        if (cy >= 12 && cy < SCR_H) canvas.drawLine(0, cy, SCR_W, cy, TFT_DARKGREY);
+        if (cx >= 0 && cx < SCR_W) canvas.drawLine(cx, 12, cx, SCR_H, TFT_DARKGREY);
+        
+        for (const auto& line : plot_lines) {
+            int prev_px = -1;
+            int prev_py = -1;
+            for (size_t i = 0; i < line.x.size() && i < line.y.size(); ++i) {
+                double xv = line.x[i];
+                double yv = line.y[i];
+                if (std::isnan(xv) || std::isinf(xv) || std::isnan(yv) || std::isinf(yv)) {
+                    prev_px = -1;
+                    prev_py = -1;
+                    continue;
+                }
+                int px = (xv - min_x) / range_x * SCR_W;
+                int py = 12 + (max_y - yv) / range_y * (SCR_H - 12);
+                
+                if (line.linestyle == "None" || line.linestyle == " " || line.linestyle.empty()) {
+                    canvas.drawPixel(px, py, line.color);
+                    canvas.drawPixel(px-1, py, line.color);
+                    canvas.drawPixel(px+1, py, line.color);
+                    canvas.drawPixel(px, py-1, line.color);
+                    canvas.drawPixel(px, py+1, line.color);
+                } else {
+                    if (prev_px != -1) {
+                        canvas.drawLine(prev_px, prev_py, px, py, line.color);
+                    }
+                    prev_px = px;
+                    prev_py = py;
+                }
+            }
+        }
+        canvas.pushSprite(0, 0);
+        return;
+    }
+    #endif
+
     if (cy >= 12 && cy < SCR_H) {
-        M5Cardputer.Display.drawLine(0, cy, SCR_W, cy, TFT_DARKGREY);
+        GFX.drawLine(0, cy, SCR_W, cy, TFT_DARKGREY);
     }
     if (cx >= 0 && cx < SCR_W) {
-        M5Cardputer.Display.drawLine(cx, 12, cx, SCR_H, TFT_DARKGREY);
+        GFX.drawLine(cx, 12, cx, SCR_H, TFT_DARKGREY);
     }
     
     for (const auto& line : plot_lines) {
@@ -1647,15 +1768,15 @@ static void drawPlot() {
             int py = 12 + (max_y - yv) / range_y * (SCR_H - 12);
             
             if (line.linestyle == "None" || line.linestyle == " " || line.linestyle.empty()) {
-                M5Cardputer.Display.drawPixel(px, py, line.color);
-                M5Cardputer.Display.drawPixel(px-1, py, line.color);
-                M5Cardputer.Display.drawPixel(px+1, py, line.color);
-                M5Cardputer.Display.drawPixel(px, py-1, line.color);
-                M5Cardputer.Display.drawPixel(px, py+1, line.color);
+                GFX.drawPixel(px, py, line.color);
+                GFX.drawPixel(px-1, py, line.color);
+                GFX.drawPixel(px+1, py, line.color);
+                GFX.drawPixel(px, py-1, line.color);
+                GFX.drawPixel(px, py+1, line.color);
             } else {
                 if (prev_px != -1) {
                     if (line.linestyle == "-") {
-                        M5Cardputer.Display.drawLine(prev_px, prev_py, px, py, line.color);
+                        GFX.drawLine(prev_px, prev_py, px, py, line.color);
                     } else if (line.linestyle == "--") {
                         drawDashedLine(prev_px, prev_py, px, py, line.color, 4, 4);
                     } else if (line.linestyle == ":") {
@@ -1675,14 +1796,14 @@ static std::vector<std::string> cached_script_wrapped_output;
 static bool script_wrapped_output_dirty = true;
 
 static void drawScripts() {
-    M5Cardputer.Display.fillScreen(TFT_BLACK);
+    GFX.fillScreen(TFT_BLACK);
     
     if (script_running_mode) {
         drawStatusBar("Script output");
         int y = 15;
         int max_lines = 7;
-        M5Cardputer.Display.setTextSize(1);
-        M5Cardputer.Display.setTextColor(TFT_WHITE);
+        GFX.setTextSize(1);
+        GFX.setTextColor(TFT_WHITE);
         if (script_wrapped_output_dirty) {
             cached_script_wrapped_output = wrapTextLines(script_console_output, 38);
             script_wrapped_output_dirty = false;
@@ -1694,8 +1815,8 @@ static void drawScripts() {
         
         int start = std::max(0, total - max_lines - script_console_scroll_offset);
         for (int i = start, row = 0; i < total && row < max_lines; ++i, ++row) {
-            M5Cardputer.Display.setCursor(5, y + row * 14);
-            M5Cardputer.Display.print(wrapped_output[i].c_str());
+            GFX.setCursor(5, y + row * 14);
+            GFX.print(wrapped_output[i].c_str());
         }
     } else if (script_edit_mode) {
         const auto& s = user_scripts[script_selected_idx];
@@ -1818,7 +1939,7 @@ static void drawScripts() {
         snprintf(title_buf, sizeof(title_buf), "Edit %s (L:%d)", s.name.c_str(), cur_line);
         drawStatusBar(title_buf);
         
-        M5Cardputer.Display.setTextSize(1);
+        GFX.setTextSize(1);
         int start_x = 4;
         int start_y = 16;
         int line_height = 12;
@@ -1834,14 +1955,14 @@ static void drawScripts() {
                 int cx = start_x + col_ctr * 6;
                 int cy = start_y + draw_row * line_height;
                 if (block_cursor) {
-                    M5Cardputer.Display.fillRect(cx, cy, 6, 12, TFT_CYAN);
+                    GFX.fillRect(cx, cy, 6, 12, TFT_CYAN);
                     if (i < n_buf && script_edit_buf[i] != '\n') {
-                        M5Cardputer.Display.setCursor(cx, cy);
-                        M5Cardputer.Display.setTextColor(TFT_BLACK, TFT_CYAN);
-                        M5Cardputer.Display.print(script_edit_buf[i]);
+                        GFX.setCursor(cx, cy);
+                        GFX.setTextColor(TFT_BLACK, TFT_CYAN);
+                        GFX.print(script_edit_buf[i]);
                     }
                 } else {
-                    M5Cardputer.Display.drawFastVLine(cx, cy, 12, TFT_CYAN);
+                    GFX.drawFastVLine(cx, cy, 12, TFT_CYAN);
                 }
             }
             
@@ -1853,9 +1974,9 @@ static void drawScripts() {
                 } else {
                     if (in_viewport && !(i == script_cursor_pos && block_cursor)) {
                         int draw_row = row_ctr - script_scroll_row;
-                        M5Cardputer.Display.setCursor(start_x + col_ctr * 6, start_y + draw_row * line_height);
-                        M5Cardputer.Display.setTextColor(char_colors[i]);
-                        M5Cardputer.Display.print(c);
+                        GFX.setCursor(start_x + col_ctr * 6, start_y + draw_row * line_height);
+                        GFX.setTextColor(char_colors[i]);
+                        GFX.print(c);
                     }
                     col_ctr++;
                     if (col_ctr >= max_cols) {
@@ -1872,12 +1993,12 @@ static void drawScripts() {
     } else {
         drawStatusBar("Cardulator | SCRIPTS");
         int y = 15;
-        M5Cardputer.Display.setTextSize(1);
+        GFX.setTextSize(1);
         
         if (user_scripts.empty()) {
-            M5Cardputer.Display.setTextColor(TFT_DARKGREY);
-            M5Cardputer.Display.setCursor(10, y + 20);
-            M5Cardputer.Display.print("No scripts available.");
+            GFX.setTextColor(TFT_DARKGREY);
+            GFX.setCursor(10, y + 20);
+            GFX.print("No scripts available.");
         } else {
             int visible_items = 8;
             int start = 0;
@@ -1886,13 +2007,13 @@ static void drawScripts() {
             }
             for (int i = start; i < (int)user_scripts.size() && i < start + visible_items; ++i) {
                 if (i == script_selected_idx) {
-                    M5Cardputer.Display.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
-                    M5Cardputer.Display.setTextColor(TFT_WHITE);
+                    GFX.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
+                    GFX.setTextColor(TFT_WHITE);
                 } else {
-                    M5Cardputer.Display.setTextColor(TFT_WHITE);
+                    GFX.setTextColor(TFT_WHITE);
                 }
-                M5Cardputer.Display.setCursor(5, y + (i - start) * 14);
-                M5Cardputer.Display.print(user_scripts[i].name.c_str());
+                GFX.setCursor(5, y + (i - start) * 14);
+                GFX.print(user_scripts[i].name.c_str());
             }
         }
         if (script_name_prompt_mode) {
@@ -1901,18 +2022,18 @@ static void drawScripts() {
             int popup_x = (SCR_W - popup_w) / 2;
             int popup_y = (SCR_H - popup_h) / 2;
             
-            M5Cardputer.Display.fillRect(popup_x, popup_y, popup_w, popup_h, 0x18E3 /* dark grey */);
-            M5Cardputer.Display.drawRect(popup_x, popup_y, popup_w, popup_h, TFT_CYAN);
+            GFX.fillRect(popup_x, popup_y, popup_w, popup_h, 0x18E3 /* dark grey */);
+            GFX.drawRect(popup_x, popup_y, popup_w, popup_h, TFT_CYAN);
             
-            M5Cardputer.Display.setTextSize(1);
-            M5Cardputer.Display.setTextColor(TFT_YELLOW);
-            M5Cardputer.Display.setCursor(popup_x + 10, popup_y + 10);
-            M5Cardputer.Display.print(is_renaming_script ? "Rename script:" : "New script name:");
+            GFX.setTextSize(1);
+            GFX.setTextColor(TFT_YELLOW);
+            GFX.setCursor(popup_x + 10, popup_y + 10);
+            GFX.print(is_renaming_script ? "Rename script:" : "New script name:");
             
-            M5Cardputer.Display.setCursor(popup_x + 10, popup_y + 30);
-            M5Cardputer.Display.setTextColor(TFT_WHITE, TFT_BLUE);
-            M5Cardputer.Display.printf("[%s]", script_name_edit_buf.c_str());
-            M5Cardputer.Display.drawFastVLine(popup_x + 16 + script_name_edit_buf.size() * 6, popup_y + 30, 10, TFT_CYAN);
+            GFX.setCursor(popup_x + 10, popup_y + 30);
+            GFX.setTextColor(TFT_WHITE, TFT_BLUE);
+            GFX.printf("[%s]", script_name_edit_buf.c_str());
+            GFX.drawFastVLine(popup_x + 16 + script_name_edit_buf.size() * 6, popup_y + 30, 10, TFT_CYAN);
         }
 
         if (delete_confirm_prompt_mode) {
@@ -2508,6 +2629,95 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
     }
 }
 
+static bool isValidIdentifier(const std::string& name) {
+    if (name.empty()) return false;
+    if (!std::isalpha(name[0]) && name[0] != '_') return false;
+    for (char c : name) {
+        if (!std::isalnum(c) && c != '_') return false;
+    }
+    return true;
+}
+
+static bool parseAndValidateFormula(const std::string& input, std::string& out_fname, std::string& out_rhs, std::vector<std::string>& out_params, std::string& out_err) {
+    if (input.empty()) {
+        out_err = "Err: Formula is empty";
+        return false;
+    }
+    size_t eq = input.find('=');
+    if (eq == std::string::npos) {
+        out_err = "Err: Need '=' (e.g. f(x)=x^2)";
+        return false;
+    }
+    std::string lhs = input.substr(0, eq);
+    std::string rhs = input.substr(eq + 1);
+    lhs.erase(0, lhs.find_first_not_of(" \t")); lhs.erase(lhs.find_last_not_of(" \t") + 1);
+    rhs.erase(0, rhs.find_first_not_of(" \t")); rhs.erase(rhs.find_last_not_of(" \t") + 1);
+
+    if (lhs.empty()) {
+        out_err = "Err: Missing name before '='";
+        return false;
+    }
+    if (rhs.empty()) {
+        out_err = "Err: Missing expr after '='";
+        return false;
+    }
+
+    std::string fname = lhs;
+    std::vector<std::string> params;
+    size_t open_p = lhs.find('(');
+    size_t close_p = lhs.find(')');
+    if (open_p != std::string::npos || close_p != std::string::npos) {
+        if (open_p == std::string::npos || close_p == std::string::npos || close_p <= open_p) {
+            out_err = "Err: Invalid args in LHS";
+            return false;
+        }
+        fname = lhs.substr(0, open_p);
+        fname.erase(0, fname.find_first_not_of(" \t")); fname.erase(fname.find_last_not_of(" \t") + 1);
+        std::string pstr = lhs.substr(open_p + 1, close_p - open_p - 1);
+        size_t start = 0;
+        while (start < pstr.size()) {
+            size_t comma = pstr.find(',', start);
+            std::string p = (comma == std::string::npos) ? pstr.substr(start) : pstr.substr(start, comma - start);
+            p.erase(0, p.find_first_not_of(" \t")); p.erase(p.find_last_not_of(" \t") + 1);
+            if (!p.empty()) {
+                if (!isValidIdentifier(p)) {
+                    out_err = "Err: Invalid arg name '" + p + "'";
+                    return false;
+                }
+                params.push_back(p);
+            }
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+    }
+    if (params.size() > 4) params.resize(4);
+
+    if (!isValidIdentifier(fname)) {
+        out_err = "Err: Invalid name '" + fname + "'";
+        return false;
+    }
+
+    int open_count = 0;
+    for (char c : rhs) {
+        if (c == '(') open_count++;
+        else if (c == ')') open_count--;
+        if (open_count < 0) {
+            out_err = "Err: Extra ')' in expression";
+            return false;
+        }
+    }
+    if (open_count != 0) {
+        out_err = "Err: Missing ')' in expression";
+        return false;
+    }
+
+    out_fname = fname;
+    out_rhs = rhs;
+    out_params = params;
+    out_err = "";
+    return true;
+}
+
 static void handleVarsKey(Keyboard_Class::KeysState& s) {
     std::vector<std::pair<std::string, double>> all_vars;
     for (size_t i = 0; i < history.size(); ++i) {
@@ -2570,12 +2780,171 @@ static void handleVarsKey(Keyboard_Class::KeysState& s) {
         return;
     }
     
+    if (var_rename_mode) {
+        if (s.esc) {
+            var_rename_mode = false;
+            var_name_selected = false;
+            var_err_str = "";
+            return;
+        }
+        if (var_name_selected) {
+            if (s.enter) {
+                if (!isValidIdentifier(var_name_buf)) {
+                    var_err_str = "Err: Invalid name '" + var_name_buf + "'";
+                    return;
+                }
+                if (var_selected_idx >= (int)history.size()) {
+                    int user_idx = var_selected_idx - (int)history.size();
+                    user_args[user_idx].name = var_name_buf;
+                    saveNVSData();
+                }
+                var_err_str = "";
+                var_rename_mode = false;
+                var_name_selected = false;
+                return;
+            }
+            if (s.del || s.backspace) {
+                var_name_buf = "";
+                var_name_selected = false;
+                var_err_str = "";
+                return;
+            }
+            if (s.left || s.right || s.up || s.down) {
+                var_name_selected = false;
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    var_name_buf = std::string(1, c);
+                    var_name_selected = false;
+                    var_err_str = "";
+                    return;
+                }
+            }
+            return;
+        } else {
+            if (s.enter) {
+                if (!isValidIdentifier(var_name_buf)) {
+                    var_err_str = "Err: Invalid name '" + var_name_buf + "'";
+                    return;
+                }
+                if (var_selected_idx >= (int)history.size()) {
+                    int user_idx = var_selected_idx - (int)history.size();
+                    user_args[user_idx].name = var_name_buf;
+                    saveNVSData();
+                }
+                var_err_str = "";
+                var_rename_mode = false;
+                return;
+            }
+            if (s.del || s.backspace) {
+                if (!var_name_buf.empty()) var_name_buf.pop_back();
+                var_err_str = "";
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    var_name_buf += c;
+                    var_err_str = "";
+                }
+            }
+            return;
+        }
+    }
+
+    if (var_create_mode) {
+        if (s.esc) {
+            var_create_mode = false;
+            var_name_selected = false;
+            var_err_str = "";
+            return;
+        }
+        if (var_name_selected) {
+            if (s.enter) {
+                std::string new_name = var_name_buf.empty() ? ("v" + std::to_string(user_args.size() + 1)) : var_name_buf;
+                if (!isValidIdentifier(new_name)) {
+                    var_err_str = "Err: Invalid name '" + new_name + "'";
+                    return;
+                }
+                user_args.push_back({new_name, 0.0});
+                var_selected_idx = (int)(history.size() + user_args.size() - 1);
+                var_create_mode = false;
+                var_name_selected = false;
+                var_edit_mode = true;
+                var_edit_buf = "0";
+                var_val_selected = true;
+                var_err_str = "";
+                saveNVSData();
+                return;
+            }
+            if (s.del || s.backspace) {
+                var_name_buf = "";
+                var_name_selected = false;
+                var_err_str = "";
+                return;
+            }
+            if (s.left || s.right || s.up || s.down) {
+                var_name_selected = false;
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    var_name_buf = std::string(1, c);
+                    var_name_selected = false;
+                    var_err_str = "";
+                    return;
+                }
+            }
+            return;
+        } else {
+            if (s.enter) {
+                std::string new_name = var_name_buf;
+                if (new_name.empty()) new_name = "v" + std::to_string(user_args.size() + 1);
+                if (!isValidIdentifier(new_name)) {
+                    var_err_str = "Err: Invalid name '" + new_name + "'";
+                    return;
+                }
+                user_args.push_back({new_name, 0.0});
+                var_selected_idx = (int)(history.size() + user_args.size() - 1);
+                var_create_mode = false;
+                var_edit_mode = true;
+                var_edit_buf = "0";
+                var_val_selected = true;
+                var_err_str = "";
+                saveNVSData();
+                return;
+            }
+            if (s.del || s.backspace) {
+                if (!var_name_buf.empty()) var_name_buf.pop_back();
+                var_err_str = "";
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    var_name_buf += c;
+                    var_err_str = "";
+                }
+            }
+            return;
+        }
+    }
+    
     if (var_edit_mode) {
-        if (s.enter) {
-            if (!var_edit_buf.empty()) {
-                std::string err;
-                double val = evaluate(var_edit_buf, err);
-                if (err.empty() && !std::isnan(val)) {
+        if (s.esc) {
+            var_edit_mode = false;
+            var_val_selected = false;
+            var_err_str = "";
+            return;
+        }
+        if (var_val_selected) {
+            if (s.enter) {
+                if (!var_edit_buf.empty()) {
+                    std::string err;
+                    double val = evaluate(var_edit_buf, err);
+                    if (!err.empty() || std::isnan(val)) {
+                        var_err_str = err.empty() ? "Err: Invalid value expr" : ("Err: " + err);
+                        return;
+                    }
                     if (var_selected_idx < (int)history.size()) {
                         history[var_selected_idx] = val;
                     } else {
@@ -2584,20 +2953,63 @@ static void handleVarsKey(Keyboard_Class::KeysState& s) {
                         saveNVSData();
                     }
                 }
+                var_err_str = "";
+                var_edit_mode = false;
+                var_val_selected = false;
+                return;
             }
-            var_edit_mode = false;
+            if (s.del || s.backspace) {
+                var_edit_buf = "";
+                var_val_selected = false;
+                var_err_str = "";
+                return;
+            }
+            if (s.left || s.right || s.up || s.down) {
+                var_val_selected = false;
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    var_edit_buf = std::string(1, c);
+                    var_val_selected = false;
+                    var_err_str = "";
+                    return;
+                }
+            }
             return;
-        }
-        if (s.esc) {
-            var_edit_mode = false;
+        } else {
+            if (s.enter) {
+                if (!var_edit_buf.empty()) {
+                    std::string err;
+                    double val = evaluate(var_edit_buf, err);
+                    if (!err.empty() || std::isnan(val)) {
+                        var_err_str = err.empty() ? "Err: Invalid value expr" : ("Err: " + err);
+                        return;
+                    }
+                    if (var_selected_idx < (int)history.size()) {
+                        history[var_selected_idx] = val;
+                    } else {
+                        int user_idx = var_selected_idx - (int)history.size();
+                        user_args[user_idx].val = val;
+                        saveNVSData();
+                    }
+                }
+                var_err_str = "";
+                var_edit_mode = false;
+                return;
+            }
+            if (s.del || s.backspace) {
+                if (!var_edit_buf.empty()) var_edit_buf.pop_back();
+                var_err_str = "";
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    var_edit_buf += c;
+                    var_err_str = "";
+                }
+            }
             return;
-        }
-        if (s.del || s.backspace) {
-            if (!var_edit_buf.empty()) var_edit_buf.pop_back();
-            return;
-        }
-        for (char c : s.word) {
-            if (c >= 32 && c < 127) var_edit_buf += c;
         }
     } else {
         bool is_up = s.up;
@@ -2621,6 +3033,8 @@ static void handleVarsKey(Keyboard_Class::KeysState& s) {
         if (s.enter && !all_vars.empty()) {
             var_edit_mode = true;
             var_edit_buf = fmtNum(all_vars[var_selected_idx].second);
+            var_val_selected = true;
+            var_err_str = "";
             return;
         }
         if (s.del || s.backspace) {
@@ -2632,12 +3046,30 @@ static void handleVarsKey(Keyboard_Class::KeysState& s) {
         }
         for (char c : s.word) {
             if (c == 'n' || c == 'N') {
-                std::string new_name = "v" + std::to_string(user_args.size() + 1);
-                user_args.push_back({new_name, 0.0});
-                var_selected_idx = history.size() + user_args.size() - 1;
-                var_edit_mode = true;
-                var_edit_buf = "0";
+                var_create_mode = true;
+                var_name_buf = "v" + std::to_string(user_args.size() + 1);
+                var_name_selected = true;
+                var_err_str = "";
                 return;
+            }
+            if (c == 'r' || c == 'R') {
+                if (!all_vars.empty() && var_selected_idx >= (int)history.size() && var_selected_idx < (int)all_vars.size()) {
+                    int user_idx = var_selected_idx - (int)history.size();
+                    var_rename_mode = true;
+                    var_name_buf = user_args[user_idx].name;
+                    var_name_selected = true;
+                    var_err_str = "";
+                    return;
+                }
+            }
+            if (c == 'e' || c == 'E') {
+                if (!all_vars.empty()) {
+                    var_edit_mode = true;
+                    var_edit_buf = fmtNum(all_vars[var_selected_idx].second);
+                    var_val_selected = true;
+                    var_err_str = "";
+                    return;
+                }
             }
         }
         if (s.esc) {
@@ -2695,29 +3127,230 @@ static void handleConstsKey(Keyboard_Class::KeysState& s) {
         }
         return;
     }
+    if (const_rename_mode) {
+        if (s.esc) {
+            const_rename_mode = false;
+            const_name_selected = false;
+            const_err_str = "";
+            return;
+        }
+        if (const_name_selected) {
+            if (s.enter) {
+                if (!isValidIdentifier(const_name_buf)) {
+                    const_err_str = "Err: Invalid name '" + const_name_buf + "'";
+                    return;
+                }
+                if (const_selected_idx < (int)user_consts.size()) {
+                    std::string cur_name = user_consts[const_selected_idx].name;
+                    if (cur_name != "pi" && cur_name != "e") {
+                        user_consts[const_selected_idx].name = const_name_buf;
+                        saveNVSData();
+                    }
+                }
+                const_err_str = "";
+                const_rename_mode = false;
+                const_name_selected = false;
+                return;
+            }
+            if (s.del || s.backspace) {
+                const_name_buf = "";
+                const_name_selected = false;
+                const_err_str = "";
+                return;
+            }
+            if (s.left || s.right || s.up || s.down) {
+                const_name_selected = false;
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    const_name_buf = std::string(1, c);
+                    const_name_selected = false;
+                    const_err_str = "";
+                    return;
+                }
+            }
+            return;
+        } else {
+            if (s.enter) {
+                if (!isValidIdentifier(const_name_buf)) {
+                    const_err_str = "Err: Invalid name '" + const_name_buf + "'";
+                    return;
+                }
+                if (const_selected_idx < (int)user_consts.size()) {
+                    std::string cur_name = user_consts[const_selected_idx].name;
+                    if (cur_name != "pi" && cur_name != "e") {
+                        user_consts[const_selected_idx].name = const_name_buf;
+                        saveNVSData();
+                    }
+                }
+                const_err_str = "";
+                const_rename_mode = false;
+                return;
+            }
+            if (s.del || s.backspace) {
+                if (!const_name_buf.empty()) const_name_buf.pop_back();
+                const_err_str = "";
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    const_name_buf += c;
+                    const_err_str = "";
+                }
+            }
+            return;
+        }
+    }
+
+    if (const_create_mode) {
+        if (s.esc) {
+            const_create_mode = false;
+            const_name_selected = false;
+            const_err_str = "";
+            return;
+        }
+        if (const_name_selected) {
+            if (s.enter) {
+                std::string new_name = const_name_buf.empty() ? ("c" + std::to_string(user_consts.size() + 1)) : const_name_buf;
+                if (!isValidIdentifier(new_name)) {
+                    const_err_str = "Err: Invalid name '" + new_name + "'";
+                    return;
+                }
+                user_consts.push_back({new_name, 0.0});
+                const_selected_idx = (int)user_consts.size() - 1;
+                const_create_mode = false;
+                const_name_selected = false;
+                const_edit_mode = true;
+                const_edit_buf = "0";
+                const_val_selected = true;
+                const_err_str = "";
+                saveNVSData();
+                return;
+            }
+            if (s.del || s.backspace) {
+                const_name_buf = "";
+                const_name_selected = false;
+                const_err_str = "";
+                return;
+            }
+            if (s.left || s.right || s.up || s.down) {
+                const_name_selected = false;
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    const_name_buf = std::string(1, c);
+                    const_name_selected = false;
+                    const_err_str = "";
+                    return;
+                }
+            }
+            return;
+        } else {
+            if (s.enter) {
+                std::string new_name = const_name_buf;
+                if (new_name.empty()) new_name = "c" + std::to_string(user_consts.size() + 1);
+                if (!isValidIdentifier(new_name)) {
+                    const_err_str = "Err: Invalid name '" + new_name + "'";
+                    return;
+                }
+                user_consts.push_back({new_name, 0.0});
+                const_selected_idx = (int)user_consts.size() - 1;
+                const_create_mode = false;
+                const_edit_mode = true;
+                const_edit_buf = "0";
+                const_val_selected = true;
+                const_err_str = "";
+                saveNVSData();
+                return;
+            }
+            if (s.del || s.backspace) {
+                if (!const_name_buf.empty()) const_name_buf.pop_back();
+                const_err_str = "";
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    const_name_buf += c;
+                    const_err_str = "";
+                }
+            }
+            return;
+        }
+    }
+
     if (const_edit_mode) {
-        if (s.enter) {
-            if (!const_edit_buf.empty()) {
-                std::string err;
-                double val = evaluate(const_edit_buf, err);
-                if (err.empty() && !std::isnan(val)) {
+        if (s.esc) {
+            const_edit_mode = false;
+            const_val_selected = false;
+            const_err_str = "";
+            return;
+        }
+        if (const_val_selected) {
+            if (s.enter) {
+                if (!const_edit_buf.empty()) {
+                    std::string err;
+                    double val = evaluate(const_edit_buf, err);
+                    if (!err.empty() || std::isnan(val)) {
+                        const_err_str = err.empty() ? "Err: Invalid value expr" : ("Err: " + err);
+                        return;
+                    }
                     user_consts[const_selected_idx].val = val;
                     saveNVSData();
                 }
+                const_err_str = "";
+                const_edit_mode = false;
+                const_val_selected = false;
+                return;
             }
-            const_edit_mode = false;
+            if (s.del || s.backspace) {
+                const_edit_buf = "";
+                const_val_selected = false;
+                const_err_str = "";
+                return;
+            }
+            if (s.left || s.right || s.up || s.down) {
+                const_val_selected = false;
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    const_edit_buf = std::string(1, c);
+                    const_val_selected = false;
+                    const_err_str = "";
+                    return;
+                }
+            }
             return;
-        }
-        if (s.esc) {
-            const_edit_mode = false;
+        } else {
+            if (s.enter) {
+                if (!const_edit_buf.empty()) {
+                    std::string err;
+                    double val = evaluate(const_edit_buf, err);
+                    if (!err.empty() || std::isnan(val)) {
+                        const_err_str = err.empty() ? "Err: Invalid value expr" : ("Err: " + err);
+                        return;
+                    }
+                    user_consts[const_selected_idx].val = val;
+                    saveNVSData();
+                }
+                const_err_str = "";
+                const_edit_mode = false;
+                return;
+            }
+            if (s.del || s.backspace) {
+                if (!const_edit_buf.empty()) const_edit_buf.pop_back();
+                const_err_str = "";
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    const_edit_buf += c;
+                    const_err_str = "";
+                }
+            }
             return;
-        }
-        if (s.del || s.backspace) {
-            if (!const_edit_buf.empty()) const_edit_buf.pop_back();
-            return;
-        }
-        for (char c : s.word) {
-            if (c >= 32 && c < 127) const_edit_buf += c;
         }
     } else {
         bool is_up = s.up;
@@ -2741,6 +3374,8 @@ static void handleConstsKey(Keyboard_Class::KeysState& s) {
         if (s.enter && !user_consts.empty()) {
             const_edit_mode = true;
             const_edit_buf = fmtNum(user_consts[const_selected_idx].val);
+            const_val_selected = true;
+            const_err_str = "";
             return;
         }
         if (s.del || s.backspace) {
@@ -2755,12 +3390,32 @@ static void handleConstsKey(Keyboard_Class::KeysState& s) {
         }
         for (char c : s.word) {
             if (c == 'n' || c == 'N') {
-                std::string new_name = "c" + std::to_string(user_consts.size() + 1);
-                user_consts.push_back({new_name, 0.0});
-                const_selected_idx = user_consts.size() - 1;
-                const_edit_mode = true;
-                const_edit_buf = "0";
+                const_create_mode = true;
+                const_name_buf = "c" + std::to_string(user_consts.size() + 1);
+                const_name_selected = true;
+                const_err_str = "";
                 return;
+            }
+            if (c == 'r' || c == 'R') {
+                if (!user_consts.empty() && const_selected_idx < (int)user_consts.size()) {
+                    std::string name = user_consts[const_selected_idx].name;
+                    if (name != "pi" && name != "e") {
+                        const_rename_mode = true;
+                        const_name_buf = name;
+                        const_name_selected = true;
+                        const_err_str = "";
+                        return;
+                    }
+                }
+            }
+            if (c == 'e' || c == 'E') {
+                if (!user_consts.empty()) {
+                    const_edit_mode = true;
+                    const_edit_buf = fmtNum(user_consts[const_selected_idx].val);
+                    const_val_selected = true;
+                    const_err_str = "";
+                    return;
+                }
             }
         }
         if (s.esc) {
@@ -3021,6 +3676,7 @@ static void handleFormulasKey(Keyboard_Class::KeysState& s) {
         if (s.esc) {
             if (formula_edit_buf == formula_edit_orig_buf) {
                 formula_edit_mode = false;
+                formula_err_str = "";
             } else {
                 formula_exit_prompt_mode = true;
                 formula_exit_selected_idx = 0;
@@ -3066,40 +3722,18 @@ static void handleFormulasKey(Keyboard_Class::KeysState& s) {
         }
 
         if (s.enter) {
-            if (!formula_edit_buf.empty()) {
-                std::string input = formula_edit_buf;
-                size_t eq = input.find('=');
-                if (eq != std::string::npos) {
-                    std::string lhs = input.substr(0, eq);
-                    std::string rhs = input.substr(eq + 1);
-                    lhs.erase(0, lhs.find_first_not_of(" \t")); lhs.erase(lhs.find_last_not_of(" \t") + 1);
-                    rhs.erase(0, rhs.find_first_not_of(" \t")); rhs.erase(rhs.find_last_not_of(" \t") + 1);
-                    std::string fname = lhs;
-                    std::vector<std::string> params;
-                    size_t open_p = lhs.find('(');
-                    size_t close_p = lhs.find(')');
-                    if (open_p != std::string::npos && close_p != std::string::npos && close_p > open_p) {
-                        fname = lhs.substr(0, open_p);
-                        fname.erase(0, fname.find_first_not_of(" \t")); fname.erase(fname.find_last_not_of(" \t") + 1);
-                        std::string pstr = lhs.substr(open_p + 1, close_p - open_p - 1);
-                        size_t start = 0;
-                        while (start < pstr.size()) {
-                            size_t comma = pstr.find(',', start);
-                            std::string p = (comma == std::string::npos) ? pstr.substr(start) : pstr.substr(start, comma - start);
-                            p.erase(0, p.find_first_not_of(" \t")); p.erase(p.find_last_not_of(" \t") + 1);
-                            if (!p.empty()) params.push_back(p);
-                            if (comma == std::string::npos) break;
-                            start = comma + 1;
-                        }
-                    }
-                    if (params.size() > 4) params.resize(4);
-                    if (!fname.empty() && !rhs.empty() && formula_selected_idx >= 0 && formula_selected_idx < (int)user_formulas.size()) {
-                        user_formulas[formula_selected_idx] = {fname, rhs, params};
-                        saveNVSData();
-                        saveSDData();
-                    }
-                }
+            std::string fname, rhs, err;
+            std::vector<std::string> params;
+            if (!parseAndValidateFormula(formula_edit_buf, fname, rhs, params, err)) {
+                formula_err_str = err;
+                return;
             }
+            if (formula_selected_idx >= 0 && formula_selected_idx < (int)user_formulas.size()) {
+                user_formulas[formula_selected_idx] = {fname, rhs, params};
+                saveNVSData();
+                saveSDData();
+            }
+            formula_err_str = "";
             formula_edit_mode = false;
             return;
         }
@@ -3133,6 +3767,131 @@ static void handleFormulasKey(Keyboard_Class::KeysState& s) {
     }
 
     if (formula_create_mode) {
+        if (formula_exit_prompt_mode) {
+            bool is_nav = s.left || s.right || s.up || s.down || (std::find(s.word.begin(), s.word.end(), ';') != s.word.end()) || (std::find(s.word.begin(), s.word.end(), '.') != s.word.end());
+            if (is_nav) {
+                formula_exit_selected_idx = 1 - formula_exit_selected_idx;
+                return;
+            }
+            auto saveAndExitCreation = [&]() {
+                std::string input = formula_create_buf;
+                if (input.empty()) input = "f" + std::to_string(user_formulas.size() + 1) + "(x)=x^2";
+                size_t eq = input.find('=');
+                if (eq != std::string::npos) {
+                    std::string lhs = input.substr(0, eq);
+                    std::string rhs = input.substr(eq + 1);
+                    lhs.erase(0, lhs.find_first_not_of(" \t")); lhs.erase(lhs.find_last_not_of(" \t") + 1);
+                    rhs.erase(0, rhs.find_first_not_of(" \t")); rhs.erase(rhs.find_last_not_of(" \t") + 1);
+                    std::string fname = lhs;
+                    std::vector<std::string> params;
+                    size_t open_p = lhs.find('(');
+                    size_t close_p = lhs.find(')');
+                    if (open_p != std::string::npos && close_p != std::string::npos && close_p > open_p) {
+                        fname = lhs.substr(0, open_p);
+                        fname.erase(0, fname.find_first_not_of(" \t")); fname.erase(fname.find_last_not_of(" \t") + 1);
+                        std::string pstr = lhs.substr(open_p + 1, close_p - open_p - 1);
+                        size_t start = 0;
+                        while (start < pstr.size()) {
+                            size_t comma = pstr.find(',', start);
+                            std::string p = (comma == std::string::npos) ? pstr.substr(start) : pstr.substr(start, comma - start);
+                            p.erase(0, p.find_first_not_of(" \t")); p.erase(p.find_last_not_of(" \t") + 1);
+                            if (!p.empty()) params.push_back(p);
+                            if (comma == std::string::npos) break;
+                            start = comma + 1;
+                        }
+                    }
+                    if (params.size() > 4) params.resize(4);
+                    if (!fname.empty() && !rhs.empty()) {
+                        user_formulas.push_back({fname, rhs, params});
+                        saveNVSData();
+                        saveSDData();
+                        formula_selected_idx = (int)user_formulas.size() - 1;
+                    }
+                }
+                formula_exit_prompt_mode = false;
+                formula_create_mode = false;
+                formula_create_selected = false;
+            };
+
+            for (char c : s.word) {
+                if (c == 'y' || c == 'Y') {
+                    saveAndExitCreation();
+                    return;
+                }
+                if (c == 'n' || c == 'N') {
+                    formula_exit_prompt_mode = false;
+                    formula_create_mode = false;
+                    formula_create_selected = false;
+                    return;
+                }
+            }
+            if (s.enter) {
+                if (formula_exit_selected_idx == 0) {
+                    saveAndExitCreation();
+                } else {
+                    formula_exit_prompt_mode = false;
+                    formula_create_mode = false;
+                    formula_create_selected = false;
+                }
+                return;
+            }
+            if (s.esc) {
+                formula_exit_prompt_mode = false;
+                return;
+            }
+            return;
+        }
+
+        if (s.esc) {
+            // Requirement 1: Prompt to save when exiting formula creation!
+            formula_exit_prompt_mode = true;
+            formula_exit_selected_idx = 0;
+            return;
+        }
+
+        if (formula_create_selected) {
+            if (s.enter) {
+                std::string input = formula_create_buf;
+                if (input.empty()) input = "f" + std::to_string(user_formulas.size() + 1) + "(x)=x^2";
+                std::string fname, rhs, err;
+                std::vector<std::string> params;
+                if (!parseAndValidateFormula(input, fname, rhs, params, err)) {
+                    formula_err_str = err;
+                    formula_create_selected = false;
+                    return;
+                }
+                user_formulas.push_back({fname, rhs, params});
+                saveNVSData();
+                saveSDData();
+                formula_selected_idx = (int)user_formulas.size() - 1;
+                formula_err_str = "";
+                formula_create_mode = false;
+                formula_create_selected = false;
+                return;
+            }
+            if (s.del || (s.fn && s.backspace) || s.backspace) {
+                formula_create_buf = "";
+                formula_create_selected = false;
+                formula_cursor_pos = 0;
+                formula_err_str = "";
+                return;
+            }
+            if (s.left || s.right || s.up || s.down || s.tab) {
+                formula_create_selected = false;
+                return;
+            }
+            for (char c : s.word) {
+                if (c >= 32 && c < 127) {
+                    formula_create_buf = std::string(1, c);
+                    formula_create_selected = false;
+                    formula_cursor_pos = 1;
+                    formula_err_str = "";
+                    return;
+                }
+            }
+            return;
+        }
+
         if (s.ctrl) {
             for (char c : s.word) {
                 switch (c) {
@@ -3171,46 +3930,18 @@ static void handleFormulasKey(Keyboard_Class::KeysState& s) {
         }
 
         if (s.enter) {
-            if (!formula_create_buf.empty()) {
-                std::string input = formula_create_buf;
-                size_t eq = input.find('=');
-                if (eq != std::string::npos) {
-                    std::string lhs = input.substr(0, eq);
-                    std::string rhs = input.substr(eq + 1);
-                    lhs.erase(0, lhs.find_first_not_of(" \t")); lhs.erase(lhs.find_last_not_of(" \t") + 1);
-                    rhs.erase(0, rhs.find_first_not_of(" \t")); rhs.erase(rhs.find_last_not_of(" \t") + 1);
-                    
-                    std::string fname = lhs;
-                    std::vector<std::string> params;
-                    size_t open_p = lhs.find('(');
-                    size_t close_p = lhs.find(')');
-                    if (open_p != std::string::npos && close_p != std::string::npos && close_p > open_p) {
-                        fname = lhs.substr(0, open_p);
-                        fname.erase(0, fname.find_first_not_of(" \t")); fname.erase(fname.find_last_not_of(" \t") + 1);
-                        std::string pstr = lhs.substr(open_p + 1, close_p - open_p - 1);
-                        size_t start = 0;
-                        while (start < pstr.size()) {
-                            size_t comma = pstr.find(',', start);
-                            std::string p = (comma == std::string::npos) ? pstr.substr(start) : pstr.substr(start, comma - start);
-                            p.erase(0, p.find_first_not_of(" \t")); p.erase(p.find_last_not_of(" \t") + 1);
-                            if (!p.empty()) params.push_back(p);
-                            if (comma == std::string::npos) break;
-                            start = comma + 1;
-                        }
-                    }
-                    if (params.size() > 4) params.resize(4);
-                    if (!fname.empty() && !rhs.empty()) {
-                        user_formulas.push_back({fname, rhs, params});
-                        saveNVSData();
-                        saveSDData();
-                        formula_selected_idx = (int)user_formulas.size() - 1;
-                    }
-                }
+            std::string input = formula_create_buf;
+            std::string fname, rhs, err;
+            std::vector<std::string> params;
+            if (!parseAndValidateFormula(input, fname, rhs, params, err)) {
+                formula_err_str = err;
+                return;
             }
-            formula_create_mode = false;
-            return;
-        }
-        if (s.esc) {
+            user_formulas.push_back({fname, rhs, params});
+            saveNVSData();
+            saveSDData();
+            formula_selected_idx = (int)user_formulas.size() - 1;
+            formula_err_str = "";
             formula_create_mode = false;
             return;
         }
@@ -3428,7 +4159,7 @@ static bool param_edit_mode = false;
 static std::string param_edit_buf = "";
 
 static void drawParams() {
-    M5Cardputer.Display.fillScreen(TFT_BLACK);
+    GFX.fillScreen(TFT_BLACK);
     drawStatusBar("Cardulator | PARAMETERS");
     
     int item_y[] = { 16, 34, 62, 79, 96, 113 };
@@ -3453,17 +4184,17 @@ static void drawParams() {
     int y0 = getY(16);
     if (y0 >= 14 && y0 < SCR_H) {
         if (param_selected_idx == 0) {
-            M5Cardputer.Display.setTextColor(TFT_YELLOW);
-            M5Cardputer.Display.fillRect(0, y0 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            GFX.setTextColor(TFT_YELLOW);
+            GFX.fillRect(0, y0 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
         } else {
-            M5Cardputer.Display.setTextColor(TFT_WHITE);
+            GFX.setTextColor(TFT_WHITE);
         }
-        M5Cardputer.Display.setCursor(10, y0);
-        M5Cardputer.Display.printf("Screen Timeout: %d s", screen_off_timeout);
+        GFX.setCursor(10, y0);
+        GFX.printf("Screen Timeout: %d s", screen_off_timeout);
         if (param_selected_idx == 0 && param_edit_mode) {
-            M5Cardputer.Display.setTextColor(TFT_CYAN);
-            M5Cardputer.Display.setCursor(160, y0);
-            M5Cardputer.Display.printf("[%s]", param_edit_buf.c_str());
+            GFX.setTextColor(TFT_CYAN);
+            GFX.setCursor(160, y0);
+            GFX.printf("[%s]", param_edit_buf.c_str());
         }
     }
 
@@ -3471,72 +4202,72 @@ static void drawParams() {
     int y1 = getY(34);
     if (y1 >= 14 && y1 < SCR_H) {
         if (param_selected_idx == 1) {
-            M5Cardputer.Display.setTextColor(TFT_YELLOW);
-            M5Cardputer.Display.fillRect(0, y1 - 1, SCR_W, 25, 0x18E3 /* dark grey */);
+            GFX.setTextColor(TFT_YELLOW);
+            GFX.fillRect(0, y1 - 1, SCR_W, 25, 0x18E3 /* dark grey */);
         } else {
-            M5Cardputer.Display.setTextColor(TFT_WHITE);
+            GFX.setTextColor(TFT_WHITE);
         }
-        M5Cardputer.Display.setCursor(10, y1);
-        M5Cardputer.Display.printf("Brightness: %d", backlight_brightness);
+        GFX.setCursor(10, y1);
+        GFX.printf("Brightness: %d", backlight_brightness);
         if (param_selected_idx == 1 && param_edit_mode) {
-            M5Cardputer.Display.setTextColor(TFT_CYAN);
-            M5Cardputer.Display.setCursor(160, y1);
-            M5Cardputer.Display.printf("[%s]", param_edit_buf.c_str());
+            GFX.setTextColor(TFT_CYAN);
+            GFX.setCursor(160, y1);
+            GFX.printf("[%s]", param_edit_buf.c_str());
         }
-        M5Cardputer.Display.drawRect(10, y1 + 14, 220, 8, TFT_WHITE);
-        M5Cardputer.Display.fillRect(11, y1 + 15, (backlight_brightness * 218) / 255, 6, TFT_GREEN);
+        GFX.drawRect(10, y1 + 14, 220, 8, TFT_WHITE);
+        GFX.fillRect(11, y1 + 15, (backlight_brightness * 218) / 255, 6, TFT_GREEN);
     }
 
     // Setting 2: Thousands Separator
     int y2 = getY(62);
     if (y2 >= 14 && y2 < SCR_H) {
         if (param_selected_idx == 2) {
-            M5Cardputer.Display.setTextColor(TFT_YELLOW);
-            M5Cardputer.Display.fillRect(0, y2 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            GFX.setTextColor(TFT_YELLOW);
+            GFX.fillRect(0, y2 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
         } else {
-            M5Cardputer.Display.setTextColor(TFT_WHITE);
+            GFX.setTextColor(TFT_WHITE);
         }
-        M5Cardputer.Display.setCursor(10, y2);
-        M5Cardputer.Display.printf("Thousands Sep: %s", use_thousands_sep ? "ON" : "OFF");
+        GFX.setCursor(10, y2);
+        GFX.printf("Thousands Sep: %s", use_thousands_sep ? "ON" : "OFF");
     }
 
     // Setting 3: Auto Brackets
     int y3 = getY(79);
     if (y3 >= 14 && y3 < SCR_H) {
         if (param_selected_idx == 3) {
-            M5Cardputer.Display.setTextColor(TFT_YELLOW);
-            M5Cardputer.Display.fillRect(0, y3 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            GFX.setTextColor(TFT_YELLOW);
+            GFX.fillRect(0, y3 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
         } else {
-            M5Cardputer.Display.setTextColor(TFT_WHITE);
+            GFX.setTextColor(TFT_WHITE);
         }
-        M5Cardputer.Display.setCursor(10, y3);
-        M5Cardputer.Display.printf("Auto Brackets: %s", auto_brackets ? "ON" : "OFF");
+        GFX.setCursor(10, y3);
+        GFX.printf("Auto Brackets: %s", auto_brackets ? "ON" : "OFF");
     }
 
     // Setting 4: Sticky Mod
     int y4 = getY(96);
     if (y4 >= 14 && y4 < SCR_H) {
         if (param_selected_idx == 4) {
-            M5Cardputer.Display.setTextColor(TFT_YELLOW);
-            M5Cardputer.Display.fillRect(0, y4 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            GFX.setTextColor(TFT_YELLOW);
+            GFX.fillRect(0, y4 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
         } else {
-            M5Cardputer.Display.setTextColor(TFT_WHITE);
+            GFX.setTextColor(TFT_WHITE);
         }
-        M5Cardputer.Display.setCursor(10, y4);
-        M5Cardputer.Display.printf("Sticky Mod: %s", sticky_mode ? "ON" : "OFF");
+        GFX.setCursor(10, y4);
+        GFX.printf("Sticky Mod: %s", sticky_mode ? "ON" : "OFF");
     }
 
     // Setting 5: Block Cursor
     int y5 = getY(113);
     if (y5 >= 14 && y5 < SCR_H) {
         if (param_selected_idx == 5) {
-            M5Cardputer.Display.setTextColor(TFT_YELLOW);
-            M5Cardputer.Display.fillRect(0, y5 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            GFX.setTextColor(TFT_YELLOW);
+            GFX.fillRect(0, y5 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
         } else {
-            M5Cardputer.Display.setTextColor(TFT_WHITE);
+            GFX.setTextColor(TFT_WHITE);
         }
-        M5Cardputer.Display.setCursor(10, y5);
-        M5Cardputer.Display.printf("Block Cursor: %s", block_cursor ? "ON" : "OFF");
+        GFX.setCursor(10, y5);
+        GFX.printf("Block Cursor: %s", block_cursor ? "ON" : "OFF");
     }
 }
 
@@ -4080,6 +4811,17 @@ static void resetAppState(AppState newState) {
     if (newState == STATE_VARS) {
         var_selected_idx = 0;
         var_edit_mode = false;
+        var_create_mode = false;
+        var_rename_mode = false;
+        var_name_selected = false;
+        var_val_selected = false;
+    } else if (newState == STATE_CONSTS) {
+        const_selected_idx = 0;
+        const_edit_mode = false;
+        const_create_mode = false;
+        const_rename_mode = false;
+        const_name_selected = false;
+        const_val_selected = false;
     } else if (newState == STATE_SCRIPTS) {
         script_selected_idx = 0;
         script_edit_mode = false;
@@ -4090,6 +4832,10 @@ static void resetAppState(AppState newState) {
     } else if (newState == STATE_FORMULAS) {
         formula_selected_idx = 0;
         formula_wizard_mode = false;
+        formula_create_mode = false;
+        formula_create_selected = false;
+        formula_edit_mode = false;
+        formula_exit_prompt_mode = false;
     } else if (newState == STATE_PLOT) {
         if (!expression.empty()) plot_expr = expression;
         plot_center_x = 0.0;
@@ -4290,18 +5036,18 @@ void setup() {
 
             displayTarget->setTextDatum(top_left);
 #else
-            M5Cardputer.Display.fillScreen(TFT_BLACK);
+            GFX.fillScreen(TFT_BLACK);
             
             // Draw background mathematical coordinate grid
             for (int x = 0; x <= SCR_W; x += 24) {
-                M5Cardputer.Display.drawFastVLine(x, 0, SCR_H, DARK_CYAN);
+                GFX.drawFastVLine(x, 0, SCR_H, DARK_CYAN);
             }
             for (int y = 0; y <= SCR_H; y += 18) {
-                M5Cardputer.Display.drawFastHLine(0, y, SCR_W, DARK_CYAN);
+                GFX.drawFastHLine(0, y, SCR_W, DARK_CYAN);
             }
             // Axis lines
-            M5Cardputer.Display.drawFastHLine(0, 75, SCR_W, DARK_BLUE);
-            M5Cardputer.Display.drawFastVLine(120, 0, SCR_H, DARK_BLUE);
+            GFX.drawFastHLine(0, 75, SCR_W, DARK_BLUE);
+            GFX.drawFastVLine(120, 0, SCR_H, DARK_BLUE);
 
             // Animated Sine Wave Plot Curve (Math symbol)
             int prev_px = -1, prev_py = -1;
@@ -4311,7 +5057,7 @@ void setup() {
                 float y_val = sinf(x_val * 2.0f + phase) * cosf(x_val * 0.5f);
                 int py = 75 - (int)(y_val * 28.0f);
                 if (prev_px != -1 && py >= 0 && py < SCR_H) {
-                    M5Cardputer.Display.drawLine(prev_px, prev_py, px, py, TFT_MAGENTA);
+                    GFX.drawLine(prev_px, prev_py, px, py, TFT_MAGENTA);
                 }
                 prev_px = px;
                 prev_py = py;
@@ -4321,28 +5067,28 @@ void setup() {
             int box_w = 170, box_h = 42;
             int box_x = (SCR_W - box_w) / 2;
             int box_y = 18;
-            M5Cardputer.Display.fillRect(box_x, box_y, box_w, box_h, 0x0808 /* dark purple/navy */);
-            M5Cardputer.Display.drawRect(box_x, box_y, box_w, box_h, TFT_CYAN);
-            M5Cardputer.Display.drawRect(box_x - 1, box_y - 1, box_w + 2, box_h + 2, TFT_BLUE);
+            GFX.fillRect(box_x, box_y, box_w, box_h, 0x0808 /* dark purple/navy */);
+            GFX.drawRect(box_x, box_y, box_w, box_h, TFT_CYAN);
+            GFX.drawRect(box_x - 1, box_y - 1, box_w + 2, box_h + 2, TFT_BLUE);
 
-            M5Cardputer.Display.setTextDatum(middle_center);
-            M5Cardputer.Display.setTextColor(TFT_CYAN);
-            M5Cardputer.Display.setTextSize(2);
-            M5Cardputer.Display.drawString("CARDULATOR", SCR_W / 2, box_y + 14);
+            GFX.setTextDatum(middle_center);
+            GFX.setTextColor(TFT_CYAN);
+            GFX.setTextSize(2);
+            GFX.drawString("CARDULATOR", SCR_W / 2, box_y + 14);
 
-            M5Cardputer.Display.setTextSize(1);
-            M5Cardputer.Display.setTextColor(TFT_YELLOW);
-            M5Cardputer.Display.drawString("ADVANCED MATH & PLOT ENGINE", SCR_W / 2, box_y + 30);
+            GFX.setTextSize(1);
+            GFX.setTextColor(TFT_YELLOW);
+            GFX.drawString("ADVANCED MATH & PLOT ENGINE", SCR_W / 2, box_y + 30);
 
             // Subtitle & Help Notice
-            M5Cardputer.Display.setTextDatum(bottom_center);
-            M5Cardputer.Display.setTextColor(TFT_WHITE);
-            M5Cardputer.Display.drawString("Press Fn+H for Help Overlay", SCR_W / 2, SCR_H - 14);
+            GFX.setTextDatum(bottom_center);
+            GFX.setTextColor(TFT_WHITE);
+            GFX.drawString("Press Fn+H for Help Overlay", SCR_W / 2, SCR_H - 14);
 
-            M5Cardputer.Display.setTextColor(TFT_DARKGREY);
-            M5Cardputer.Display.drawString("v" VERSION "  |  aroum", SCR_W / 2, SCR_H - 3);
+            GFX.setTextColor(TFT_DARKGREY);
+            GFX.drawString("v" VERSION "  |  aroum", SCR_W / 2, SCR_H - 3);
 
-            M5Cardputer.Display.setTextDatum(top_left);
+            GFX.setTextDatum(top_left);
 #endif
 
 #ifdef ARDUINO
@@ -4377,7 +5123,7 @@ static void processKeyEvent(Keyboard_Class::KeysState s) {
             }
         }
         if (handled) {
-            M5Cardputer.Display.startWrite();
+            GFX.startWrite();
             switch (appState) {
                 case STATE_CALC: drawCalc(); break;
                 case STATE_HELP: drawHelpView(); break;
@@ -4389,14 +5135,18 @@ static void processKeyEvent(Keyboard_Class::KeysState s) {
                 case STATE_PARAMS: drawParams(); break;
                 case STATE_CONSTS: drawConsts(); break;
             }
-            M5Cardputer.Display.endWrite();
+            #ifdef ARDUINO
+            if (canvas_ready) canvas.pushSprite(0, 0);
+            #endif
+            GFX.endWrite();
             return;
         }
     }
 
     // Direct Arrow and Esc Navigation Shortcuts (without Fn) for Non-REPL Screens
     bool in_edit_mode = false;
-    if (appState == STATE_VARS && var_edit_mode) in_edit_mode = true;
+    if (appState == STATE_VARS && (var_edit_mode || var_create_mode || var_rename_mode)) in_edit_mode = true;
+    if (appState == STATE_CONSTS && (const_edit_mode || const_create_mode || const_rename_mode)) in_edit_mode = true;
     if (appState == STATE_PARAMS && param_edit_mode) in_edit_mode = true;
     if (appState == STATE_SCRIPTS && script_edit_mode) in_edit_mode = true;
     if (appState == STATE_FORMULAS && (formula_wizard_mode || formula_create_mode || formula_edit_mode)) in_edit_mode = true;
@@ -4426,7 +5176,7 @@ static void processKeyEvent(Keyboard_Class::KeysState s) {
         }
     }
 
-    M5Cardputer.Display.startWrite();
+    GFX.startWrite();
     switch (appState) {
         case STATE_CALC:
             handleCalcKey(s);
@@ -4475,7 +5225,12 @@ static void processKeyEvent(Keyboard_Class::KeysState s) {
             drawConsts();
             break;
     }
-    M5Cardputer.Display.endWrite();
+    #ifdef ARDUINO
+    if (canvas_ready) {
+        canvas.pushSprite(0, 0);
+    }
+    #endif
+    GFX.endWrite();
 }
 
 void loop() {
