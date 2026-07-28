@@ -3,6 +3,9 @@
 [Russian / Русский](README_RU.md)
 
 ![logo](logo.png)
+![photo](photo.png)
+
+---
 
 [![Build Status](https://github.com/aroum/cardulator/actions/workflows/build.yml/badge.svg)](https://github.com/aroum/cardulator/actions)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)](https://platformio.org/)
