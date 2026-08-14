@@ -20,7 +20,7 @@
 - **High-Performance REPL**: Interactive evaluation loop with `Tab` autocompletion, 1-based answer history (`e1`, `e2`...), SI prefix parsing (`1k` = `1000`, `2M2` = `2,200,000`), scientific notation (`5e10`), and multi-statement lines using `;`.
 - **Dynamic Syntax Highlighting**: Real-time rainbow bracket depth matching (`( )`), yellow numbers, cyan variables, magenta constants, and red syntax/error highlighting.
 - **2D Plotting Engine (`STATE_PLOT` / `Fn + G`)**: Interactive Matplotlib-like 2D function and vector plotter (`plot(y)`, `plot(x, y, color, linestyle)`) with panning (WASD / Arrows), 5x turbo zoom (`Ctrl + Zoom`), auto-scaling, and `plot.hold()`.
-- **Formula Library & Interactive Wizard (`Fn + F`)**: Multi-argument formula manager (up to 4 parameters) with sequential step-by-step evaluation wizards, syntax-highlighted code editor, and NVS persistence.
+- **Formula Library & Interactive Wizard (`Fn + F`)**: Multi-argument formula manager (up to 4 parameters) using standard `f(x,y)=expression` syntax (e.g. `hypot(x,y)=sqrt(x^2+y^2)`). In the formula selection menu, arrow keys work directly without `Fn` (as well as `Tab`/`Fn`+arrows). Inside formula editor fields, arrow navigation requires **`Fn` + Arrows** (`Fn+;` / `Fn+.`).
 - **Scripting Engine (`Fn + S`)**: C-style script runner supporting `if/elif/else`, `while`, `for`, `sleep()`, 1D arrays/vectors, element-wise math (`.*`, `./`), dot products, and formatted text printing (`print("x={x}")`).
 - **Customizable Hotkey Binds (`Fn + B`)**: Bind expressions or template shortcuts to `Alt + [Key]` for quick one-touch execution in REPL.
 - **NVS Storage & Persistence**: Automatic background saving and loading of user variables, functions, scripts, keybindings, and system parameters across reboots.
@@ -30,14 +30,14 @@
 
 ## ⌨️ Controls & Keybindings
 
-### 1. Navigation & Cursor Control (All Text Fields)
+### 1. Navigation & Cursor Control (All Text Fields & Formulas)
 
-Physical keys `,` `/` `;` `.` type their literal characters by default. Cursor navigation in all input fields (REPL, formulas, scripts, variables) is controlled strictly via the **`Fn` key**:
+Physical keys `,` `/` `;` `.` type their literal characters by default. Navigation in all input fields and formula lists is controlled strictly via the **`Fn` key** or **`Tab`**:
 
 - **`Fn + ,`** $\rightarrow$ **Left** (Move cursor 1 character left)
 - **`Fn + /`** $\rightarrow$ **Right** (Move cursor 1 character right)
-- **`Fn + ;`** $\rightarrow$ **Up** (Navigate calculation history in REPL or line/list navigation)
-- **`Fn + .`** $\rightarrow$ **Down** (Navigate calculation history in REPL or line/list navigation)
+- **`Fn + ;`** $\rightarrow$ **Up** (Navigate calculation history in REPL, formula list, or line/list navigation)
+- **`Fn + .`** $\rightarrow$ **Down** (Navigate calculation history in REPL, formula list, or line/list navigation; or **`Tab`**)
 - **`Ctrl + Left`** (`Ctrl + Fn + ,`) / **`Ctrl + Right`** (`Ctrl + Fn + /`) $\rightarrow$ Word-by-word cursor jump left/right
 - **`Ctrl + Up`** / **`Ctrl + Down`** (`Ctrl + Fn + ;` / `Ctrl + Fn + .`) $\rightarrow$ Scroll REPL viewport up/down
 - **`Fn + L`** $\rightarrow$ **Home** (Move cursor to beginning of line; `Ctrl + Fn + L` jumps to top of document)
@@ -257,15 +257,40 @@ Visualize functions or datasets directly on Cardputer's 1.14" display.
 
 ---
 
+### 6. Units Conversion Engine (`conv()`)
+
+Cardulator includes a comprehensive unit conversion engine powered by `gnu-units` alongside specialized electronics and physics converters:
+
+- **General syntax**: `conv(val, "from_unit", ["to_unit"])` (e.g. `conv(100, "km/hr", "m/s")` $\rightarrow$ `27.777778 m/s`)
+- **SI Base reduction**: `conv(5, "mile")` $\rightarrow$ `8046.72 m`
+- **Assignment to variables**: `speed = conv(60, "mph", "km/hr")` or `[val, unit] = conv(100, "km/hr")`
+- **Electronics & SMD Component Codes**:
+  - SMD 3-digit & 4-digit Resistors: `conv("472", "smd4")` $\rightarrow$ `4720`, `conv(200, "smd3")` $\rightarrow$ `201`
+  - EIA-96 Resistors: `conv(10000, "eia96")` $\rightarrow$ `01C`, `conv("01A", "ohm")` $\rightarrow$ `100 ohm`
+  - RKM-notation: `conv("2R2", "ohm")` $\rightarrow$ `2.2 ohm`, `conv("R47", "ohm")` $\rightarrow$ `0.47 ohm`
+  - Capacitors & Inductors: `conv("104", "uf")` $\rightarrow$ `0.1 uF`, `conv("4R7", "uh")` $\rightarrow$ `4.7 uH`
+  - Wire cross-section: `conv(24, "AWG", "mm^2")` $\rightarrow$ `0.2047 mm^2`, `conv(0.205, "mm^2", "AWG")` $\rightarrow$ `24 AWG`
+  - Decibels & Power: `conv(30, "dBm", "mW")` $\rightarrow$ `1000 mW`, `conv(20, "dB", "times")` $\rightarrow$ `100 times`
+
+---
+
 ## ⚙️ System Parameters (`Fn + P`)
 
 Configure system settings stored in NVS:
 
 - **Screen Timeout**: Auto-off delay in seconds (0 = always on). Any keypress wakes screen.
 - **Backlight Brightness**: Display brightness level (0 to 255).
-- **Thousands Sep**: Toggle (`ON`/`OFF`) space separator for thousands in results (e.g., `1 000 000.00`).
+- **Format Mode**: Numeric output display format:
+  - `NORM` (Auto default: clean standard/scientific display)
+  - `FLT` (Pure float: strips exponent & trailing zeros)
+  - `FIX` (Fixed point: strict decimal places with trailing zeros)
+  - `SCI` (Scientific notation: e.g. `1.2345e-06`)
+  - `ENG` (Engineering notation: exponent multiple of 3)
+- **Precision (dp)**: Number of decimal places / significant digits (0 to 12).
+- **Thousands Sep**: Toggle (`ON`/`OFF`) space grouping for thousands in results (e.g., `1 234 567.890 123`).
 - **Auto Brackets**: Toggle (`ON`/`OFF`) automatic pairing for brackets `()`, `[]`, `{}` and quotes `'`, `"`. Auto-inserts `()` on `Tab` autocompletion.
 - **Sticky Mod**: Toggle (`ON`/`OFF`) sticky modifier keys (`Fn`, `Shift`/`Aa`, `Opt`, `Ctrl`, `Alt`). Short tap (< 1s) latches modifier; long press (> 1s) releases on lift.
+- **Block Cursor**: Toggle (`ON`/`OFF`) filled block cursor vs vertical bar.
 
 ---
 

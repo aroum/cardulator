@@ -48,6 +48,7 @@ static bool screen_is_on = true;
 static bool sd_initialized = false;
 
 #include "math_engine.h"
+#include "units_adapter.h"
 
 // Define global states declared extern in math_engine.h
 std::vector<double> history;
@@ -80,7 +81,7 @@ std::vector<std::string> autocomplete_words = {
     "sqrt(", "ln(", "log(", "log2(", "logb(", "exp(", "cbrt(",
     "abs(", "ceil(", "floor(", "round(", "trunc(", "sgn(", "mod(",
     "mean(", "median(", "mode(", "var(", "std(", "dot(", "rUni(", "rNor(",
-    "fact(", "C(", "P(", "gcd(", "lcm(", "fib(", "len(", "print(", "help(", "help()",
+    "fact(", "C(", "P(", "gcd(", "lcm(", "fib(", "len(", "print(", "conv(", "help(", "help()",
     "pi", "e", "phi",
     "plot(", "plot.show()", "plot.close()", "plot.hold(", "plot.xlim(", "plot.ylim("
 };
@@ -156,7 +157,8 @@ static bool formula_exit_prompt_mode = false;
 static int formula_exit_selected_idx = 0; // 0 = Yes (Save), 1 = No (Discard)
 static std::string formula_err_str = "";
 
-// Scripts Manager state
+static bool isValidIdentifier(const std::string& name);
+static bool parseAndValidateFormula(const std::string& input, std::string& out_fname, std::string& out_rhs, std::vector<std::string>& out_params, std::string& out_err);
 static int script_selected_idx = 0;
 static bool script_edit_mode = false;
 static std::string script_edit_buf = "";
@@ -206,6 +208,8 @@ static void loadNVSData() {
     screen_off_timeout = preferences.getInt("scr_off", 30);
     backlight_brightness = preferences.getInt("brightness", 128);
     use_thousands_sep = preferences.getBool("thousands_sep", false);
+    fmt_mode = preferences.getInt("fmt_mode", 0);
+    fmt_precision = preferences.getInt("fmt_prec", 6);
     auto_brackets = preferences.getBool("auto_brackets", true);
     sticky_mode = preferences.getBool("sticky_mode", false);
     block_cursor = preferences.getBool("block_cursor", false);
@@ -432,23 +436,32 @@ static void loadSDData() {
                 item.erase(std::remove(item.begin(), item.end(), '\r'), item.end());
                 item.erase(std::remove(item.begin(), item.end(), '\n'), item.end());
                 if (item.empty()) continue;
-                size_t first_bar = item.find('|');
-                size_t second_bar = (first_bar == std::string::npos) ? std::string::npos : item.find('|', first_bar + 1);
-                if (first_bar != std::string::npos && second_bar != std::string::npos) {
-                    std::string name = item.substr(0, first_bar);
-                    std::string expr = item.substr(first_bar + 1, second_bar - first_bar - 1);
-                    std::string params_str = item.substr(second_bar + 1);
-                    
+                size_t eq = item.find('=');
+                if (eq != std::string::npos) {
+                    std::string fname, rhs, err;
                     std::vector<std::string> params;
-                    size_t p_pos = 0;
-                    while (p_pos < params_str.size()) {
-                        size_t next_comma = params_str.find(',', p_pos);
-                        std::string param = params_str.substr(p_pos, next_comma == std::string::npos ? std::string::npos : next_comma - p_pos);
-                        if (!param.empty()) params.push_back(param);
-                        if (next_comma == std::string::npos) break;
-                        p_pos = next_comma + 1;
+                    if (parseAndValidateFormula(item, fname, rhs, params, err)) {
+                        user_formulas.push_back({fname, rhs, params});
                     }
-                    user_formulas.push_back({name, expr, params});
+                } else {
+                    size_t first_bar = item.find('|');
+                    size_t second_bar = (first_bar == std::string::npos) ? std::string::npos : item.find('|', first_bar + 1);
+                    if (first_bar != std::string::npos && second_bar != std::string::npos) {
+                        std::string name = item.substr(0, first_bar);
+                        std::string expr = item.substr(first_bar + 1, second_bar - first_bar - 1);
+                        std::string params_str = item.substr(second_bar + 1);
+                        
+                        std::vector<std::string> params;
+                        size_t p_pos = 0;
+                        while (p_pos < params_str.size()) {
+                            size_t next_comma = params_str.find(',', p_pos);
+                            std::string param = params_str.substr(p_pos, next_comma == std::string::npos ? std::string::npos : next_comma - p_pos);
+                            if (!param.empty()) params.push_back(param);
+                            if (next_comma == std::string::npos) break;
+                            p_pos = next_comma + 1;
+                        }
+                        user_formulas.push_back({name, expr, params});
+                    }
                 }
             }
             f.close();
@@ -573,6 +586,8 @@ static void saveNVSData() {
     preferences.putInt("scr_off", screen_off_timeout);
     preferences.putInt("brightness", backlight_brightness);
     preferences.putBool("thousands_sep", use_thousands_sep);
+    preferences.putInt("fmt_mode", fmt_mode);
+    preferences.putInt("fmt_prec", fmt_precision);
     preferences.putBool("auto_brackets", auto_brackets);
     preferences.putBool("sticky_mode", sticky_mode);
     preferences.putBool("block_cursor", block_cursor);
@@ -645,8 +660,9 @@ static void saveSDData() {
         for (const auto& p : fm.params) {
             params_str += p + ",";
         }
+        if (!params_str.empty()) params_str.pop_back();
         char buf[256];
-        snprintf(buf, sizeof(buf), "%s|%s|%s\n", fm.name.c_str(), fm.expr.c_str(), params_str.c_str());
+        snprintf(buf, sizeof(buf), "%s(%s)=%s\n", fm.name.c_str(), params_str.c_str(), fm.expr.c_str());
         formulas_str += buf;
     }
     sdWriteIfDifferent("/Cardulator/formulas.txt", formulas_str);
@@ -1587,8 +1603,7 @@ static void drawFormulas() {
             for (size_t p = 0; p < user_formulas[i].params.size() && p < 4; ++p) {
                 params_str += user_formulas[i].params[p] + ",";
             }
-            if (!params_str.empty()) params_str.pop_back();
-            snprintf(line_buf, sizeof(line_buf), "%s(%s) = %s", user_formulas[i].name.c_str(), params_str.c_str(), user_formulas[i].expr.c_str());
+            snprintf(line_buf, sizeof(line_buf), "%s(%s)=%s", user_formulas[i].name.c_str(), params_str.c_str(), user_formulas[i].expr.c_str());
             GFX.print(line_buf);
         }
         
@@ -2419,6 +2434,109 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
             expression = "";
             cursor_pos = 0;
             resultStr = help_res;
+            hasError = false;
+            select_all_active = false;
+            return;
+        }
+
+        // Handle conv(value, "unit_a", ["unit_b"]) or [val, unit] = conv(...)
+        std::string conv_expr = trimmed_expr;
+        std::string assign_var1 = "", assign_var2 = "";
+        bool is_conv_assign = false;
+
+        size_t conv_eq_pos = trimmed_expr.find('=');
+        if (conv_eq_pos != std::string::npos && 
+            trimmed_expr.find("==") == std::string::npos &&
+            trimmed_expr.find(">=") == std::string::npos &&
+            trimmed_expr.find("<=") == std::string::npos &&
+            trimmed_expr.find("!=") == std::string::npos) {
+            
+            std::string lhs = trimmed_expr.substr(0, conv_eq_pos);
+            std::string rhs = trimmed_expr.substr(conv_eq_pos + 1);
+            lhs.erase(0, lhs.find_first_not_of(" \t"));
+            lhs.erase(lhs.find_last_not_of(" \t") + 1);
+            rhs.erase(0, rhs.find_first_not_of(" \t"));
+            rhs.erase(rhs.find_last_not_of(" \t") + 1);
+
+            if (rhs.rfind("conv(", 0) == 0 && rhs.back() == ')') {
+                is_conv_assign = true;
+                conv_expr = rhs;
+
+                size_t comma = lhs.find(',');
+                if (comma != std::string::npos) {
+                    assign_var1 = lhs.substr(0, comma);
+                    assign_var2 = lhs.substr(comma + 1);
+                } else {
+                    assign_var1 = lhs;
+                }
+                assign_var1.erase(0, assign_var1.find_first_not_of(" \t"));
+                assign_var1.erase(assign_var1.find_last_not_of(" \t") + 1);
+                assign_var2.erase(0, assign_var2.find_first_not_of(" \t"));
+                assign_var2.erase(assign_var2.find_last_not_of(" \t") + 1);
+            }
+        }
+
+        if (conv_expr.rfind("conv(", 0) == 0 && conv_expr.back() == ')') {
+            std::string body = conv_expr.substr(5, conv_expr.size() - 6);
+            std::vector<std::string> conv_args = splitPlotArgs(body);
+            if (conv_args.size() < 2 || conv_args.size() > 3) {
+                resultStr = "Arg Count Mismatch";
+                hasError = true;
+                return;
+            }
+
+            std::string eval_err;
+            double val = evaluate(conv_args[0], eval_err);
+            std::string unit_a = conv_args[1];
+            std::string unit_b = (conv_args.size() == 3) ? conv_args[2] : "";
+
+            if (!eval_err.empty() || std::isnan(val)) {
+                val = 0.0;
+                unit_a = conv_args[0];
+                unit_b = (conv_args.size() >= 2) ? conv_args[1] : "";
+            }
+
+            ConvResult c_res = handleConv(val, unit_a, unit_b);
+            if (!c_res.success) {
+                resultStr = c_res.errorMsg.empty() ? "Conversion failed" : c_res.errorMsg;
+                hasError = true;
+                return;
+            }
+
+            pushExprHistory(expression);
+            history_index = expr_history.size();
+
+            if (is_conv_assign) {
+                if (!assign_var1.empty()) {
+                    auto it = std::find_if(user_args.begin(), user_args.end(), [&](const UserArg& a) {
+                        return a.name == assign_var1;
+                    });
+                    if (it != user_args.end()) {
+                        it->val = c_res.value;
+                    } else {
+                        user_args.push_back({assign_var1, c_res.value});
+                    }
+                }
+
+                if (!assign_var2.empty()) {
+                    resultStr = assign_var1 + " = " + fmtNum(c_res.value);
+                } else {
+                    resultStr = assign_var1 + " = " + fmtNum(c_res.value);
+                    if (!c_res.unitStr.empty()) resultStr += " " + c_res.unitStr;
+                }
+                pushResultHistory(c_res.value, resultStr);
+            } else {
+                if (c_res.value == 0.0 && !c_res.unitStr.empty() && (std::isdigit(c_res.unitStr[0]) || c_res.unitStr.find('R') != std::string::npos)) {
+                    resultStr = c_res.unitStr;
+                } else {
+                    resultStr = fmtNum(c_res.value);
+                    if (!c_res.unitStr.empty()) resultStr += " " + c_res.unitStr;
+                }
+                pushResultHistory(c_res.value, "e" + std::to_string(history.size() + 1) + " = " + resultStr);
+            }
+
+            expression = "";
+            cursor_pos = 0;
             hasError = false;
             select_all_active = false;
             return;
@@ -3578,7 +3696,7 @@ static void handleFormulasKey(Keyboard_Class::KeysState& s) {
     }
     if (formula_edit_mode) {
         if (formula_exit_prompt_mode) {
-            bool is_nav = s.left || s.right || s.up || s.down || (std::find(s.word.begin(), s.word.end(), ';') != s.word.end()) || (std::find(s.word.begin(), s.word.end(), '.') != s.word.end());
+            bool is_nav = s.left || s.right || s.up || s.down;
             if (is_nav) {
                 formula_exit_selected_idx = 1 - formula_exit_selected_idx;
                 return;
@@ -3768,7 +3886,7 @@ static void handleFormulasKey(Keyboard_Class::KeysState& s) {
 
     if (formula_create_mode) {
         if (formula_exit_prompt_mode) {
-            bool is_nav = s.left || s.right || s.up || s.down || (std::find(s.word.begin(), s.word.end(), ';') != s.word.end()) || (std::find(s.word.begin(), s.word.end(), '.') != s.word.end());
+            bool is_nav = s.left || s.right || s.up || s.down;
             if (is_nav) {
                 formula_exit_selected_idx = 1 - formula_exit_selected_idx;
                 return;
@@ -3986,8 +4104,8 @@ static void handleFormulasKey(Keyboard_Class::KeysState& s) {
             const auto& f = user_formulas[formula_selected_idx];
             int p_count = std::min(4, (int)f.params.size());
 
-            bool is_up = s.up || (std::find(s.word.begin(), s.word.end(), ';') != s.word.end());
-            bool is_down = s.down || s.tab || (std::find(s.word.begin(), s.word.end(), '.') != s.word.end());
+            bool is_up = s.up;
+            bool is_down = s.down || s.tab;
 
             if (is_up) {
                 if (formula_wizard_param_idx > 0) {
@@ -4069,8 +4187,8 @@ static void handleFormulasKey(Keyboard_Class::KeysState& s) {
         }
         return;
     } else {
-        bool is_up = s.up || (std::find(s.word.begin(), s.word.end(), ';') != s.word.end());
-        bool is_down = s.down || s.tab || (std::find(s.word.begin(), s.word.end(), '.') != s.word.end());
+        bool is_up = s.up;
+        bool is_down = s.down || s.tab;
 
         if (is_up) {
             if (formula_selected_idx > 0) {
@@ -4103,7 +4221,7 @@ static void handleFormulasKey(Keyboard_Class::KeysState& s) {
                         pstr += f.params[p] + ",";
                     }
                     if (!pstr.empty()) pstr.pop_back();
-                    formula_edit_buf = f.name + "(" + pstr + ") = " + f.expr;
+                    formula_edit_buf = f.name + "(" + pstr + ")=" + f.expr;
                     formula_edit_orig_buf = formula_edit_buf;
                     formula_cursor_pos = formula_edit_buf.size();
                     formula_edit_mode = true;
@@ -4162,12 +4280,12 @@ static void drawParams() {
     GFX.fillScreen(TFT_BLACK);
     drawStatusBar("Cardulator | PARAMETERS");
     
-    int item_y[] = { 16, 34, 62, 79, 96, 113 };
-    int item_h[] = { 16, 26, 15, 15, 15, 15 };
+    int item_y[] = { 16, 34, 62, 79, 96, 113, 130, 147 };
+    int item_h[] = { 16, 26, 15, 15, 15, 15, 15, 15 };
     
     static int param_scroll_y = 0;
     int sel = param_selected_idx;
-    if (sel >= 0 && sel < 6) {
+    if (sel >= 0 && sel < 8) {
         if (item_y[sel] - param_scroll_y < 16) {
             param_scroll_y = item_y[sel] - 16;
         } else if (item_y[sel] + item_h[sel] - param_scroll_y > 132) {
@@ -4218,7 +4336,8 @@ static void drawParams() {
         GFX.fillRect(11, y1 + 15, (backlight_brightness * 218) / 255, 6, TFT_GREEN);
     }
 
-    // Setting 2: Thousands Separator
+    // Setting 2: Format Mode
+    const char* fmt_names[] = { "NORM (Auto)", "FLT (Float)", "FIX (Fixed)", "SCI (Scientific)", "ENG (Engineering)" };
     int y2 = getY(62);
     if (y2 >= 14 && y2 < SCR_H) {
         if (param_selected_idx == 2) {
@@ -4228,10 +4347,10 @@ static void drawParams() {
             GFX.setTextColor(TFT_WHITE);
         }
         GFX.setCursor(10, y2);
-        GFX.printf("Thousands Sep: %s", use_thousands_sep ? "ON" : "OFF");
+        GFX.printf("Format Mode: %s", (fmt_mode >= 0 && fmt_mode <= 4) ? fmt_names[fmt_mode] : "NORM");
     }
 
-    // Setting 3: Auto Brackets
+    // Setting 3: Precision / Decimals (dp)
     int y3 = getY(79);
     if (y3 >= 14 && y3 < SCR_H) {
         if (param_selected_idx == 3) {
@@ -4241,10 +4360,15 @@ static void drawParams() {
             GFX.setTextColor(TFT_WHITE);
         }
         GFX.setCursor(10, y3);
-        GFX.printf("Auto Brackets: %s", auto_brackets ? "ON" : "OFF");
+        GFX.printf("Precision (dp): %d", fmt_precision);
+        if (param_selected_idx == 3 && param_edit_mode) {
+            GFX.setTextColor(TFT_CYAN);
+            GFX.setCursor(160, y3);
+            GFX.printf("[%s]", param_edit_buf.c_str());
+        }
     }
 
-    // Setting 4: Sticky Mod
+    // Setting 4: Thousands Separator
     int y4 = getY(96);
     if (y4 >= 14 && y4 < SCR_H) {
         if (param_selected_idx == 4) {
@@ -4254,10 +4378,10 @@ static void drawParams() {
             GFX.setTextColor(TFT_WHITE);
         }
         GFX.setCursor(10, y4);
-        GFX.printf("Sticky Mod: %s", sticky_mode ? "ON" : "OFF");
+        GFX.printf("Thousands Sep: %s", use_thousands_sep ? "ON" : "OFF");
     }
 
-    // Setting 5: Block Cursor
+    // Setting 5: Auto Brackets
     int y5 = getY(113);
     if (y5 >= 14 && y5 < SCR_H) {
         if (param_selected_idx == 5) {
@@ -4267,6 +4391,32 @@ static void drawParams() {
             GFX.setTextColor(TFT_WHITE);
         }
         GFX.setCursor(10, y5);
+        GFX.printf("Auto Brackets: %s", auto_brackets ? "ON" : "OFF");
+    }
+
+    // Setting 6: Sticky Mod
+    int y6 = getY(130);
+    if (y6 >= 14 && y6 < SCR_H) {
+        if (param_selected_idx == 6) {
+            GFX.setTextColor(TFT_YELLOW);
+            GFX.fillRect(0, y6 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+        } else {
+            GFX.setTextColor(TFT_WHITE);
+        }
+        GFX.setCursor(10, y6);
+        GFX.printf("Sticky Mod: %s", sticky_mode ? "ON" : "OFF");
+    }
+
+    // Setting 7: Block Cursor
+    int y7 = getY(147);
+    if (y7 >= 14 && y7 < SCR_H) {
+        if (param_selected_idx == 7) {
+            GFX.setTextColor(TFT_YELLOW);
+            GFX.fillRect(0, y7 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+        } else {
+            GFX.setTextColor(TFT_WHITE);
+        }
+        GFX.setCursor(10, y7);
         GFX.printf("Block Cursor: %s", block_cursor ? "ON" : "OFF");
     }
 }
@@ -4282,6 +4432,10 @@ static void handleParamsKey(Keyboard_Class::KeysState& s) {
                     if (val >= 0 && val <= 255) {
                         backlight_brightness = val;
                         M5Cardputer.Display.setBrightness(backlight_brightness);
+                    }
+                } else if (param_selected_idx == 3) {
+                    if (val >= 0 && val <= 12) {
+                        fmt_precision = val;
                     }
                 }
                 saveNVSData();
@@ -4303,9 +4457,9 @@ static void handleParamsKey(Keyboard_Class::KeysState& s) {
     bool is_down = s.down || s.tab;
     if (is_up) {
         if (param_selected_idx > 0) param_selected_idx--;
-        else param_selected_idx = 5; // Cyclic top -> bottom
+        else param_selected_idx = 7; // Cyclic top -> bottom
     } else if (is_down) {
-        if (param_selected_idx < 5) param_selected_idx++;
+        if (param_selected_idx < 7) param_selected_idx++;
         else param_selected_idx = 0; // Cyclic bottom -> top
     } else if (s.left || s.right) {
         if (param_selected_idx == 0) {
@@ -4316,32 +4470,42 @@ static void handleParamsKey(Keyboard_Class::KeysState& s) {
             else backlight_brightness = std::min(255, backlight_brightness + 15);
             M5Cardputer.Display.setBrightness(backlight_brightness);
         } else if (param_selected_idx == 2) {
-            use_thousands_sep = !use_thousands_sep;
+            if (s.left) fmt_mode = (fmt_mode + 4) % 5;
+            else fmt_mode = (fmt_mode + 1) % 5;
         } else if (param_selected_idx == 3) {
-            auto_brackets = !auto_brackets;
+            if (s.left) fmt_precision = std::max(0, fmt_precision - 1);
+            else fmt_precision = std::min(12, fmt_precision + 1);
         } else if (param_selected_idx == 4) {
-            sticky_mode = !sticky_mode;
+            use_thousands_sep = !use_thousands_sep;
         } else if (param_selected_idx == 5) {
+            auto_brackets = !auto_brackets;
+        } else if (param_selected_idx == 6) {
+            sticky_mode = !sticky_mode;
+        } else if (param_selected_idx == 7) {
             block_cursor = !block_cursor;
         }
         saveNVSData();
     } else if (s.enter) {
         if (param_selected_idx == 2) {
-            use_thousands_sep = !use_thousands_sep;
-            saveNVSData();
-        } else if (param_selected_idx == 3) {
-            auto_brackets = !auto_brackets;
+            fmt_mode = (fmt_mode + 1) % 5;
             saveNVSData();
         } else if (param_selected_idx == 4) {
-            sticky_mode = !sticky_mode;
+            use_thousands_sep = !use_thousands_sep;
             saveNVSData();
         } else if (param_selected_idx == 5) {
+            auto_brackets = !auto_brackets;
+            saveNVSData();
+        } else if (param_selected_idx == 6) {
+            sticky_mode = !sticky_mode;
+            saveNVSData();
+        } else if (param_selected_idx == 7) {
             block_cursor = !block_cursor;
             saveNVSData();
         } else {
             param_edit_mode = true;
             if (param_selected_idx == 0) param_edit_buf = std::to_string(screen_off_timeout);
             else if (param_selected_idx == 1) param_edit_buf = std::to_string(backlight_brightness);
+            else if (param_selected_idx == 3) param_edit_buf = std::to_string(fmt_precision);
         }
     } else if (s.esc) {
         navigateBack();
@@ -4938,8 +5102,8 @@ void setup() {
             // Save initial formulas
             f = SD.open("/Cardulator/formulas.txt", FILE_WRITE);
             if (f) {
-                f.println("hypot|sqrt(x^2 + y^2)|x,y;");
-                f.println("area|pi * r^2|r;");
+                f.println("hypot(x,y)=sqrt(x^2 + y^2)");
+                f.println("area(r)=pi * r^2");
                 f.close();
             }
             // Save initial settings

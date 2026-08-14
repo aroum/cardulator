@@ -40,15 +40,14 @@ bool handlePlotCommands(const std::string& line, std::string& err, double& resul
     }
     if (trimmed.rfind("plot.xlim(", 0) == 0 && trimmed.back() == ')') {
         std::string arg = trimmed.substr(10, trimmed.size() - 11);
-        arg.erase(0, arg.find_first_not_of(" \t"));
-        arg.erase(arg.find_last_not_of(" \t") + 1);
-        if (arg.size() >= 2 && arg.front() == '[' && arg.back() == ']') {
-            arg = arg.substr(1, arg.size() - 2);
-        }
-        size_t comma = arg.find(',');
-        if (comma != std::string::npos) {
-            std::string min_str = arg.substr(0, comma);
-            std::string max_str = arg.substr(comma + 1);
+        size_t b = arg.find_first_not_of(" \t[");
+        size_t e = arg.find_last_not_of(" \t]");
+        arg = (b != std::string::npos && e != std::string::npos && b <= e) ? arg.substr(b, e - b + 1) : "";
+        size_t sep = arg.find(',');
+        if (sep == std::string::npos) sep = arg.find(' ');
+        if (sep != std::string::npos) {
+            std::string min_str = arg.substr(0, sep);
+            std::string max_str = arg.substr(sep + 1);
             std::string eval_err;
             double min_v = evaluate(min_str, eval_err);
             double max_v = evaluate(max_str, eval_err);
@@ -67,15 +66,14 @@ bool handlePlotCommands(const std::string& line, std::string& err, double& resul
     }
     if (trimmed.rfind("plot.ylim(", 0) == 0 && trimmed.back() == ')') {
         std::string arg = trimmed.substr(10, trimmed.size() - 11);
-        arg.erase(0, arg.find_first_not_of(" \t"));
-        arg.erase(arg.find_last_not_of(" \t") + 1);
-        if (arg.size() >= 2 && arg.front() == '[' && arg.back() == ']') {
-            arg = arg.substr(1, arg.size() - 2);
-        }
-        size_t comma = arg.find(',');
-        if (comma != std::string::npos) {
-            std::string min_str = arg.substr(0, comma);
-            std::string max_str = arg.substr(comma + 1);
+        size_t b = arg.find_first_not_of(" \t[");
+        size_t e = arg.find_last_not_of(" \t]");
+        arg = (b != std::string::npos && e != std::string::npos && b <= e) ? arg.substr(b, e - b + 1) : "";
+        size_t sep = arg.find(',');
+        if (sep == std::string::npos) sep = arg.find(' ');
+        if (sep != std::string::npos) {
+            std::string min_str = arg.substr(0, sep);
+            std::string max_str = arg.substr(sep + 1);
             std::string eval_err;
             double min_v = evaluate(min_str, eval_err);
             double max_v = evaluate(max_str, eval_err);

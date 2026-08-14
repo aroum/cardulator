@@ -11,8 +11,8 @@ bool preprocessHelp(const std::string& s, std::string& help_out) {
                    "Round: ceil, floor, round, trunc, sgn\n"
                    "Stats: mean, median, var, std, rUni, rNor\n"
                    "Combinatorics: fact, C, P, gcd, lcm, fib\n"
-                   "System: len, print, plot, help\n"
-                   "Tip: type help(name) e.g. help(plot)";
+                   "Units & System: conv, len, print, plot, help\n"
+                   "Tip: type help(name) e.g. help(conv) or help(units)";
         return true;
     }
     if (trimmed.rfind("help(", 0) == 0 && trimmed.back() == ')') {
@@ -41,6 +41,33 @@ bool preprocessHelp(const std::string& s, std::string& help_out) {
             help_out = "=== print() Help ===\n"
                        "print(expr) : evaluate & output expr\n"
                        "print(\"text {var}\") : formatted string with var";
+        }
+        else if (target == "conv" || target == "units") {
+            help_out = "=== conv() / Units Conversion Help ===\n"
+                       "Syntax:\n"
+                       "  conv(val, \"unit_a\", [\"unit_b\"])\n\n"
+                       "Examples:\n"
+                       "  conv(100, \"km/hr\", \"m/s\") -> 27.777778 m/s\n"
+                       "  conv(30, \"dBm\", \"mW\")     -> 1000 mW\n"
+                       "  conv(20, \"dB\", \"times\")   -> 100 times\n"
+                       "  conv(24, \"AWG\", \"mm^2\")   -> 0.20473 mm^2\n\n"
+                       "Supported Base Units by Category:\n"
+                       "  - Length: m, mile, nmi (nauticalmile), inch (in), ft, yd, fathom, cable, marineleague, angstrom, lightyear, parsec, au\n"
+                       "  - Mass: g, lb, oz, ton, tonne, grain, dram, stone, slug, amu\n"
+                       "  - Time: s, min, hr, day, week, month, year\n"
+                       "  - Speed: m/s, km/hr, mph, knot, brknot, mach, c (speed of light)\n"
+                       "  - Area: m^2, sqft, sqin, hectare (ha), acre, barn\n"
+                       "  - Volume: m^3, liter (l, L), gallon (gal), quart (qt), pint (pt), cup, fluidounce (floz), tablespoon (tbsp), teaspoon (tsp), barrel (bbl)\n"
+                       "  - Pressure: Pa, bar, atm, psi, torr, mmHg, inHg\n"
+                       "  - Energy/Work: J, cal, BTU, eV, kWh, erg, ftlb\n"
+                       "  - Power: W, hp (horsepower), BTU/hr, cal/s\n"
+                       "  - Temperature: tempC, tempF, tempK, tempR\n"
+                       "  - Wire / Cross Section: AWG, mm^2, kcmil, MCM\n"
+                       "  - Decibel & Ratios: dB, dB_power, dB_v, dBm, dBW, dBV, dBu, dBmV, dBuV\n"
+                       "  - Pure Ratios & Multipliers: times, ratio, x, percent (%), ppm, ppb\n"
+                       "  - Electricity & Magnetism: A, V, ohm, F, H, C, Wb, T, G (gauss)\n"
+                       "  - SI Prefixes (can prefix units): Y, Z, E, P, T, G, M, k, h, da, d, c, m, u, n, p, f, a, z, y\n"
+                       "Note: 'h'=hectare in GNU Units; use 'hr' for hours";
         }
         else if (target == "len") {
             help_out = "=== len() Help ===\n"
@@ -199,11 +226,11 @@ void getHelpPopupData(AppState state, bool script_edit_mode, std::string& out_ti
             out_lines = {
                 "Up/Down or ; . : Select param",
                 "Left/Right or Enter: Toggle/Edit",
-                "Screen Timeout: Off time (s)",
-                "Brightness: Backlight (0-255)",
-                "Thousands Sep: 1 000 000",
+                "Format Mode: NORM/FLT/FIX/SCI/ENG",
+                "Precision: Decimals (0..12)",
+                "Thousands Sep: Grouping on/off",
                 "Auto Brackets: Auto-close ()",
-                "Sticky Mod: Fn/Aa/Opt latch",
+                "Sticky Mod / Block Cursor: Toggle",
                 "Esc or [: Exit to REPL"
             };
             break;

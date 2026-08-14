@@ -35,7 +35,7 @@ std::vector<std::string> autocomplete_words = {
     "sqrt(", "ln(", "log(", "log2(", "logb(", "exp(", "cbrt(",
     "abs(", "ceil(", "floor(", "round(", "trunc(", "sgn(", "mod(",
     "mean(", "median(", "var(", "std(", "rUni(", "rNor(",
-    "fact(", "C(", "P(", "gcd(", "lcm(", "fib(", "len(", "print(", "help(", "help()",
+    "fact(", "C(", "P(", "gcd(", "lcm(", "fib(", "len(", "print(", "conv(", "help(", "help()", "const ",
     "pi", "e", "phi",
     "plot(", "plot.show()", "plot.close()", "plot.hold(", "plot.xlim(", "plot.ylim("
 };
@@ -58,7 +58,7 @@ void setUp(void) {
         "sqrt(", "ln(", "log(", "log2(", "logb(", "exp(", "cbrt(",
         "abs(", "ceil(", "floor(", "round(", "trunc(", "sgn(", "mod(",
         "mean(", "median(", "var(", "std(", "rUni(", "rNor(",
-        "fact(", "C(", "P(", "gcd(", "lcm(", "fib(", "len(", "print(", "help(", "help()",
+        "fact(", "C(", "P(", "gcd(", "lcm(", "fib(", "len(", "print(", "conv(", "help(", "help()", "const ",
         "pi", "e", "phi",
         "plot(", "plot.show()", "plot.close()", "plot.hold(", "plot.xlim(", "plot.ylim("
     };
@@ -688,6 +688,232 @@ void test_def_functions_and_multiple_returns(void) {
     TEST_ASSERT_EQUAL_STRING("14 6 40", script_console_output.back().c_str());
 }
 
+#include "units_adapter.h"
+
+void test_units_conversion(void) {
+    std::string dat_path = "lib/gnu-units/units.dat";
+    
+    // 1. Target unit conversion
+    ConvResult c1 = handleConv(5, "mile", "km", dat_path);
+    TEST_ASSERT_TRUE(c1.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 8.04672, c1.value);
+    TEST_ASSERT_EQUAL_STRING("km", c1.unitStr.c_str());
+
+    // 2. SI base unit conversion
+    ConvResult c2 = handleConv(100, "km/hr", "", dat_path);
+    TEST_ASSERT_TRUE(c2.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 27.7778, c2.value);
+
+    // 3. Incompatible units check
+    ConvResult c3 = handleConv(5, "mile", "deg", dat_path);
+    TEST_ASSERT_FALSE(c3.success);
+    TEST_ASSERT_TRUE(c3.errorMsg.find("Incompatible") != std::string::npos);
+
+    // 4. Decibel and AWG
+    ConvResult c_db1 = handleConv(30, "dBm", "mW", dat_path);
+    TEST_ASSERT_TRUE(c_db1.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 1000.0, c_db1.value);
+
+    ConvResult c_db2 = handleConv(20, "dB", "times", dat_path);
+    TEST_ASSERT_TRUE(c_db2.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 100.0, c_db2.value);
+
+    ConvResult c_db3 = handleConv(20, "dB_v", "times", dat_path);
+    TEST_ASSERT_TRUE(c_db3.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 10.0, c_db3.value);
+
+    ConvResult c_awg1 = handleConv(24, "AWG", "mm^2", dat_path);
+    TEST_ASSERT_TRUE(c_awg1.success);
+    TEST_ASSERT_DOUBLE_WITHIN(5e-3, 0.2047, c_awg1.value);
+
+    ConvResult c_awg2 = handleConv(0.205, "mm^2", "AWG", dat_path);
+    TEST_ASSERT_TRUE(c_awg2.success);
+    TEST_ASSERT_DOUBLE_WITHIN(0.1, 24.0, c_awg2.value);
+
+    // 5. Component codes (Resistors, Capacitors, Inductors)
+    ConvResult c_res1 = handleConv(0, "01C", "ohm", dat_path);
+    TEST_ASSERT_TRUE(c_res1.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 10000.0, c_res1.value);
+
+    ConvResult c_res2 = handleConv(10000, "ohm", "eia96", dat_path);
+    TEST_ASSERT_TRUE(c_res2.success);
+    TEST_ASSERT_EQUAL_STRING("01C", c_res2.unitStr.c_str());
+
+    ConvResult c_res3 = handleConv(0, "472", "smd4", dat_path);
+    TEST_ASSERT_TRUE(c_res3.success);
+    TEST_ASSERT_TRUE(c_res3.unitStr == "4701" || c_res3.unitStr == "4720");
+
+    ConvResult c_res4 = handleConv(200, "smd3", "", dat_path);
+    if (!c_res4.success) c_res4 = handleConv(0, "200", "smd3", dat_path);
+    TEST_ASSERT_TRUE(c_res4.success);
+    TEST_ASSERT_TRUE(c_res4.unitStr == "201" || c_res4.unitStr == "200");
+
+    ConvResult c_cap1 = handleConv(0, "104", "uf", dat_path);
+    TEST_ASSERT_TRUE(c_cap1.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-4, 0.1, c_cap1.value);
+
+    ConvResult c_ind1 = handleConv(0, "4R7", "uh", dat_path);
+    TEST_ASSERT_TRUE(c_ind1.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-4, 4.7, c_ind1.value);
+
+    // 6. RKM notation: 2R2, R2, R47
+    ConvResult c_r1 = handleConv(0, "2R2", "ohm", dat_path);
+    TEST_ASSERT_TRUE(c_r1.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 2.2, c_r1.value);
+
+    ConvResult c_r2 = handleConv(0, "R2", "ohm", dat_path);
+    TEST_ASSERT_TRUE(c_r2.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 0.2, c_r2.value);
+
+    ConvResult c_r3 = handleConv(0, "R47", "ohm", dat_path);
+    TEST_ASSERT_TRUE(c_r3.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 0.47, c_r3.value);
+
+    // 7. EIA-96 multipliers
+    ConvResult c_eia_z = handleConv(0, "01Z", "ohm", dat_path);
+    TEST_ASSERT_TRUE(c_eia_z.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 0.1, c_eia_z.value);
+
+    ConvResult c_eia_a = handleConv(0, "01A", "ohm", dat_path);
+    TEST_ASSERT_TRUE(c_eia_a.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 100.0, c_eia_a.value);
+
+    ConvResult c_eia_d = handleConv(0, "01D", "ohm", dat_path);
+    TEST_ASSERT_TRUE(c_eia_d.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 100000.0, c_eia_d.value);
+}
+
+void test_num_formatting(void) {
+    use_thousands_sep = true;
+
+    // NORM mode
+    fmt_mode = 0;
+    fmt_precision = 6;
+    TEST_ASSERT_EQUAL_STRING("1 234.57", fmtNum(1234.567).c_str());
+    TEST_ASSERT_TRUE(fmtNum(12345678.9).find("e+") != std::string::npos);
+
+    // FLT mode
+    fmt_mode = 1;
+    fmt_precision = 6;
+    TEST_ASSERT_EQUAL_STRING("1 234.5", fmtNum(1234.500).c_str());
+    TEST_ASSERT_EQUAL_STRING("0.000 001", fmtNum(0.0000012345).c_str());
+
+    // FIX mode
+    fmt_mode = 2;
+    fmt_precision = 6;
+    TEST_ASSERT_EQUAL_STRING("1 234 567.890 123", fmtNum(1234567.8901234).c_str());
+    TEST_ASSERT_EQUAL_STRING("12.340 000", fmtNum(12.34).c_str());
+
+    // SCI mode
+    fmt_mode = 3;
+    fmt_precision = 4;
+    TEST_ASSERT_EQUAL_STRING("1.234 5e-06", fmtNum(0.0000012345).c_str());
+
+    // ENG mode
+    fmt_mode = 4;
+    fmt_precision = 3;
+    TEST_ASSERT_EQUAL_STRING("123.457e+03", fmtNum(123456.789).c_str());
+    TEST_ASSERT_EQUAL_STRING("1.235e-06", fmtNum(0.0000012345).c_str());
+
+    // Without digit grouping
+    use_thousands_sep = false;
+    fmt_mode = 2;
+    fmt_precision = 6;
+    TEST_ASSERT_EQUAL_STRING("0.000001", fmtNum(0.0000012345).c_str());
+
+    fmt_mode = 0;
+    fmt_precision = 6;
+}
+
+void test_tab_completion_suite(void) {
+    auto reset_tab = []() {
+        std::string empty = "";
+        int rpos = -999;
+        handleTabCompletion(empty, rpos);
+    };
+
+    // Prefix 'p' cycling with auto_brackets = true
+    reset_tab();
+    auto_brackets = true;
+    std::string expr1 = "p";
+    int cursor1 = 1;
+
+    handleTabCompletion(expr1, cursor1);
+    TEST_ASSERT_EQUAL_STRING("pi", expr1.c_str());
+    TEST_ASSERT_EQUAL_INT(2, cursor1);
+
+    handleTabCompletion(expr1, cursor1);
+    TEST_ASSERT_EQUAL_STRING("phi", expr1.c_str());
+    TEST_ASSERT_EQUAL_INT(3, cursor1);
+
+    handleTabCompletion(expr1, cursor1);
+    TEST_ASSERT_EQUAL_STRING("print()", expr1.c_str());
+    TEST_ASSERT_EQUAL_INT(6, cursor1);
+
+    handleTabCompletion(expr1, cursor1);
+    TEST_ASSERT_EQUAL_STRING("plot()", expr1.c_str());
+    TEST_ASSERT_EQUAL_INT(5, cursor1);
+
+    // Prefix 'c' cycling
+    reset_tab();
+    std::string expr4 = "c";
+    int cursor4 = 1;
+    handleTabCompletion(expr4, cursor4);
+    TEST_ASSERT_EQUAL_STRING("cos()", expr4.c_str());
+    handleTabCompletion(expr4, cursor4);
+    TEST_ASSERT_EQUAL_STRING("ctan()", expr4.c_str());
+    handleTabCompletion(expr4, cursor4);
+    TEST_ASSERT_EQUAL_STRING("cosh()", expr4.c_str());
+    handleTabCompletion(expr4, cursor4);
+    TEST_ASSERT_EQUAL_STRING("cbrt()", expr4.c_str());
+    handleTabCompletion(expr4, cursor4);
+    TEST_ASSERT_EQUAL_STRING("ceil()", expr4.c_str());
+    handleTabCompletion(expr4, cursor4);
+    TEST_ASSERT_EQUAL_STRING("conv()", expr4.c_str());
+    handleTabCompletion(expr4, cursor4);
+    TEST_ASSERT_EQUAL_STRING("const ", expr4.c_str());
+
+    // User variable priority
+    reset_tab();
+    user_args.clear();
+    user_consts.clear();
+    user_consts.push_back({"para", 3.14});
+    user_args.push_back({"power", 42.0});
+
+    std::string expr5 = "pa";
+    int cursor5 = 2;
+    handleTabCompletion(expr5, cursor5);
+    TEST_ASSERT_EQUAL_STRING("para", expr5.c_str());
+    TEST_ASSERT_EQUAL_INT(4, cursor5);
+
+    user_args.clear();
+    user_consts.clear();
+}
+
+void test_plot_limits_extended(void) {
+    double plot_res = 0.0;
+    std::string plot_err = "";
+    bool handled = handlePlotCommands("plot.xlim([-5, 5])", plot_err, plot_res);
+    TEST_ASSERT_TRUE(handled);
+    TEST_ASSERT_TRUE(plot_err.empty());
+    TEST_ASSERT_TRUE(plot_manual_limits);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-5, -5.0, plot_xlim_min);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-5, 5.0, plot_xlim_max);
+
+    handled = handlePlotCommands("plot.ylim([-10 10])", plot_err, plot_res);
+    TEST_ASSERT_TRUE(handled);
+    TEST_ASSERT_TRUE(plot_err.empty());
+    TEST_ASSERT_TRUE(plot_manual_limits);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-5, -10.0, plot_ylim_min);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-5, 10.0, plot_ylim_max);
+
+    handled = handlePlotCommands("plot.xlim(-2, 2)", plot_err, plot_res);
+    TEST_ASSERT_TRUE(handled);
+    TEST_ASSERT_TRUE(plot_err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-5, -2.0, plot_xlim_min);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-5, 2.0, plot_xlim_max);
+}
+
 int main(int argc, char **argv) {
     std::setlocale(LC_ALL, "C");
     UNITY_BEGIN();
@@ -713,5 +939,9 @@ int main(int argc, char **argv) {
     RUN_TEST(test_help);
     RUN_TEST(test_extended_script_operators_and_vector_funcs);
     RUN_TEST(test_def_functions_and_multiple_returns);
+    RUN_TEST(test_units_conversion);
+    RUN_TEST(test_num_formatting);
+    RUN_TEST(test_tab_completion_suite);
+    RUN_TEST(test_plot_limits_extended);
     return UNITY_END();
 }

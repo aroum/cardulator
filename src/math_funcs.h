@@ -43,19 +43,13 @@ inline double custom_P(double n, double k) {
     if (k < 0 || k > n) return 0;
     return custom_fact(n) / custom_fact(n - k);
 }
+#include <numeric>
+
 inline double custom_gcd(double a, double b) {
-    int64_t ia = std::abs((int64_t)a);
-    int64_t ib = std::abs((int64_t)b);
-    while (ib) {
-        int64_t temp = ib;
-        ib = ia % ib;
-        ia = temp;
-    }
-    return (double)ia;
+    return (double)std::gcd((int64_t)std::abs((int64_t)a), (int64_t)std::abs((int64_t)b));
 }
 inline double custom_lcm(double a, double b) {
-    if (a == 0.0 && b == 0.0) return 0.0;
-    return std::abs(a * b) / custom_gcd(a, b);
+    return (double)std::lcm((int64_t)std::abs((int64_t)a), (int64_t)std::abs((int64_t)b));
 }
 inline double custom_fib(double n) {
     int val = (int)n;
@@ -170,37 +164,96 @@ inline double custom_dot(double a, double b) {
     return a * b;
 }
 
-// Formatting helpers
-inline std::string addThousandsSep(const std::string& num_str) {
+// Formatting settings:
+// fmt_mode: 0 = NORM, 1 = FLT, 2 = FIX, 3 = SCI, 4 = ENG
+// fmt_precision: 0..12 (default 6)
+// use_thousands_sep: true/false
+inline int fmt_mode = 0;
+inline int fmt_precision = 6;
+
+inline std::string addDigitGrouping(const std::string& num_str) {
     size_t dot = num_str.find('.');
     std::string int_part = (dot == std::string::npos) ? num_str : num_str.substr(0, dot);
-    std::string frac_part = (dot == std::string::npos) ? "" : num_str.substr(dot);
-    
-    std::string result = "";
+    std::string frac_part = (dot == std::string::npos) ? "" : num_str.substr(dot + 1);
+
+    // Group integer part (right to left)
+    std::string grouped_int = "";
     int count = 0;
     for (int i = (int)int_part.size() - 1; i >= 0; --i) {
-        if (count > 0 && count % 3 == 0) result = " " + result;
-        result = int_part[i] + result;
+        if (count > 0 && count % 3 == 0) grouped_int = " " + grouped_int;
+        grouped_int = int_part[i] + grouped_int;
         count++;
     }
-    return result + frac_part;
+
+    if (dot == std::string::npos) return grouped_int;
+
+    // Group fractional part (left to right): e.g. 000 001 234
+    std::string grouped_frac = "";
+    for (size_t i = 0; i < frac_part.size(); ++i) {
+        if (i > 0 && i % 3 == 0) grouped_frac += " ";
+        grouped_frac += frac_part[i];
+    }
+
+    return grouped_int + "." + grouped_frac;
 }
 
 inline std::string fmtNum(double v) {
     if (std::isnan(v) || std::isinf(v)) return "Error";
-    char buf[48];
-    if (v == std::floor(v) && std::abs(v) < 1e15) {
-        snprintf(buf, sizeof(buf), "%.0f", v);
+    if (v == 0.0) v = 0.0; // avoid -0
+
+    char buf[64];
+    int prec = std::clamp(fmt_precision, 0, 12);
+
+    if (fmt_mode == 1) {
+        // FLT (Pure Float, no exponent, strips trailing zeros)
+        snprintf(buf, sizeof(buf), "%.*f", prec, v);
+        std::string s(buf);
+        if (s.find('.') != std::string::npos) {
+            while (!s.empty() && s.back() == '0') s.pop_back();
+            if (!s.empty() && s.back() == '.') s.pop_back();
+        }
+        snprintf(buf, sizeof(buf), "%s", s.c_str());
+    } else if (fmt_mode == 2) {
+        // FIX (Fixed point with exact trailing zeros)
+        snprintf(buf, sizeof(buf), "%.*f", prec, v);
+    } else if (fmt_mode == 3) {
+        // SCI (Scientific e.g. 1.2345e-06)
+        snprintf(buf, sizeof(buf), "%.*e", prec, v);
+    } else if (fmt_mode == 4) {
+        // ENG (Engineering: exponent multiple of 3)
+        if (v == 0.0) {
+            snprintf(buf, sizeof(buf), "%.*fe+00", prec, 0.0);
+        } else {
+            double abs_v = std::abs(v);
+            int exp_val = static_cast<int>(std::floor(std::log10(abs_v)));
+            int eng_exp = std::floor(exp_val / 3.0) * 3;
+            double mantissa = v / std::pow(10.0, eng_exp);
+            char sign_c = (eng_exp >= 0) ? '+' : '-';
+            snprintf(buf, sizeof(buf), "%.*fe%c%02d", prec, mantissa, sign_c, std::abs(eng_exp));
+        }
     } else {
-        snprintf(buf, sizeof(buf), "%.8g", v);
+        // NORM / AUTO (honor user precision, min 1)
+        if (v == std::floor(v) && std::abs(v) < 1e15) {
+            snprintf(buf, sizeof(buf), "%.0f", v);
+        } else if (std::abs(v) >= 1e-4 && std::abs(v) < 1e7) {
+            snprintf(buf, sizeof(buf), "%.*g", std::max(1, prec), v);
+        } else {
+            snprintf(buf, sizeof(buf), "%.*e", prec, v);
+        }
     }
-    if (!use_thousands_sep) return buf;
-    
+
     std::string s = buf;
+    if (!use_thousands_sep) return s;
+
+    // Apply digit grouping to mantissa / main number part
     bool neg = !s.empty() && s[0] == '-';
     if (neg) s = s.substr(1);
-    if (s.find('e') == std::string::npos && s.find('E') == std::string::npos) {
-        s = addThousandsSep(s);
-    }
-    return neg ? "-" + s : s;
+
+    size_t e_pos = s.find_first_of("eE");
+    std::string main_num = (e_pos == std::string::npos) ? s : s.substr(0, e_pos);
+    std::string exp_suffix = (e_pos == std::string::npos) ? "" : s.substr(e_pos);
+
+    std::string grouped_main = addDigitGrouping(main_num);
+    std::string result = (neg ? "-" : "") + grouped_main + exp_suffix;
+    return result;
 }

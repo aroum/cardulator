@@ -1011,6 +1011,13 @@ double evaluate(const std::string& expr_str, std::string& err) {
     return val;
 }
 
+double evaluateWithoutHistory(const std::string& expr_str, std::string& err) {
+    auto orig_history = history;
+    double val = evaluate(expr_str, err);
+    history = orig_history;
+    return val;
+}
+
 double evaluateInput(const std::string& expr_str, std::string& err, bool& isDefinition) {
     isDefinition = false;
     
@@ -1080,6 +1087,20 @@ double evaluateInput(const std::string& expr_str, std::string& err, bool& isDefi
         isDefinition = true;
         
         if (lhs.find('(') != std::string::npos && lhs.find(')') != std::string::npos) {
+            size_t open_p = lhs.find('(');
+            std::string target_fname = lhs.substr(0, open_p);
+            target_fname.erase(0, target_fname.find_first_not_of(" \t"));
+            target_fname.erase(target_fname.find_last_not_of(" \t") + 1);
+
+            // If a function with the same name exists, remove it first so editing updates it in-place
+            user_funcs.erase(std::remove_if(user_funcs.begin(), user_funcs.end(), [&](const std::string& fn) {
+                size_t open = fn.find('(');
+                std::string fname = (open != std::string::npos) ? fn.substr(0, open) : fn;
+                fname.erase(0, fname.find_first_not_of(" \t"));
+                fname.erase(fname.find_last_not_of(" \t") + 1);
+                return fname == target_fname;
+            }), user_funcs.end());
+
             user_funcs.push_back(expr_str);
             std::string test_err = "";
             substituteUserFuncs(lhs, test_err);
@@ -1089,10 +1110,9 @@ double evaluateInput(const std::string& expr_str, std::string& err, bool& isDefi
                 return std::numeric_limits<double>::quiet_NaN();
             }
             
-            size_t paren = lhs.find('(');
-            std::string fname = lhs.substr(0, paren + 1);
-            if (std::find(autocomplete_words.begin(), autocomplete_words.end(), fname) == autocomplete_words.end()) {
-                autocomplete_words.push_back(fname);
+            std::string fname_auto = target_fname + "(";
+            if (std::find(autocomplete_words.begin(), autocomplete_words.end(), fname_auto) == autocomplete_words.end()) {
+                autocomplete_words.push_back(fname_auto);
             }
             return 1.0;
         } else if (isConstDef) {
@@ -1201,49 +1221,78 @@ double evaluateInput(const std::string& expr_str, std::string& err, bool& isDefi
     return evaluate(expr_str, err);
 }
 
+static std::string g_tab_orig_prefix = "";
+static size_t g_tab_comp_start = 0;
+static int g_tab_match_idx = -1;
+static std::string g_tab_last_inserted = "";
+
+void resetTabState() {
+    g_tab_orig_prefix = "";
+    g_tab_last_inserted = "";
+    g_tab_comp_start = 0;
+    g_tab_match_idx = -1;
+}
+
 void handleTabCompletion(std::string& expression, int& cursor_pos) {
-    static std::string orig_prefix = "";
-    static size_t comp_start = 0;
-    static int match_idx = -1;
-    static std::string last_inserted = "";
+    if (expression.empty() && cursor_pos == -999) {
+        resetTabState();
+        return;
+    }
 
     bool is_continuation = false;
-    if (!orig_prefix.empty() && !last_inserted.empty() && comp_start <= expression.size()) {
-        if (expression.substr(comp_start, last_inserted.size()) == last_inserted) {
-            is_continuation = true;
+    if (!g_tab_orig_prefix.empty() && !g_tab_last_inserted.empty() && g_tab_comp_start <= expression.size()) {
+        if (g_tab_comp_start + g_tab_last_inserted.size() <= expression.size() &&
+            expression.substr(g_tab_comp_start, g_tab_last_inserted.size()) == g_tab_last_inserted) {
+            if (cursor_pos >= (int)g_tab_comp_start && cursor_pos <= (int)(g_tab_comp_start + g_tab_last_inserted.size())) {
+                is_continuation = true;
+            }
         }
     }
 
     if (!is_continuation) {
         if (cursor_pos < 0 || cursor_pos > (int)expression.size()) cursor_pos = expression.size();
         size_t start = cursor_pos;
-        while (start > 0 && (std::isalnum(expression[start - 1]) || expression[start - 1] == '_')) {
+        while (start > 0 && (std::isalnum((unsigned char)expression[start - 1]) || expression[start - 1] == '_')) {
             start--;
         }
         std::string prefix = expression.substr(start, cursor_pos - start);
-        if (prefix.empty()) return;
+        if (prefix.empty()) {
+            resetTabState();
+            return;
+        }
 
-        orig_prefix = prefix;
-        comp_start = start;
-        match_idx = 0;
+        g_tab_orig_prefix = prefix;
+        g_tab_comp_start = start;
+        g_tab_match_idx = 0;
     } else {
-        match_idx++;
+        g_tab_match_idx++;
     }
 
     std::vector<std::string> matches;
     matches.reserve(16);
 
     auto check_candidate = [&](const std::string& word) {
-        if (word.rfind(orig_prefix, 0) == 0) {
+        if (word.rfind(g_tab_orig_prefix, 0) == 0) {
             if (std::find(matches.begin(), matches.end(), word) == matches.end()) {
                 matches.push_back(word);
             }
         }
     };
 
-    for (const auto& w : autocomplete_words) check_candidate(w);
-    for (size_t i = 0; i < history.size(); ++i) check_candidate("e" + std::to_string(i + 1));
+    // 1. Built-in constants (pi, e, phi) & User variables/constants first
+    for (const auto& w : autocomplete_words) {
+        if (w == "pi" || w == "e" || w == "phi") check_candidate(w);
+    }
     for (const auto& arg : user_args) check_candidate(arg.name);
+    for (const auto& cn : user_consts) check_candidate(cn.name);
+
+    // 2. Built-in math functions & history variables (e1, e2, e3...)
+    for (const auto& w : autocomplete_words) {
+        if (w != "pi" && w != "e" && w != "phi") check_candidate(w);
+    }
+    for (size_t i = 0; i < history.size(); ++i) check_candidate("e" + std::to_string(i + 1));
+
+    // 3. User formulas & scripts
     for (const auto& func : user_funcs) {
         size_t paren = func.find('(');
         if (paren != std::string::npos) {
@@ -1254,54 +1303,34 @@ void handleTabCompletion(std::string& expression, int& cursor_pos) {
     for (const auto& sf : user_script_funcs) {
         check_candidate(sf.name + "(");
     }
-    for (const auto& cn : user_consts) check_candidate(cn.name);
-
-    // Extract identifiers (variable/function names) from expression
-    {
-        std::string token = "";
-        for (size_t i = 0; i <= expression.size(); ++i) {
-            char c = (i < expression.size()) ? expression[i] : ' ';
-            if (std::isalnum(c) || c == '_') {
-                token += c;
-            } else {
-                if (!token.empty()) {
-                    if (!std::isdigit(token[0])) {
-                        if (c == '(') {
-                            check_candidate(token + "(");
-                        } else {
-                            check_candidate(token);
-                        }
-                    }
-                    token.clear();
-                }
-            }
-        }
-    }
 
     if (matches.empty()) {
-        orig_prefix = "";
-        last_inserted = "";
+        resetTabState();
         return;
     }
 
-    match_idx = match_idx % matches.size();
-    std::string matched_word = matches[match_idx];
+    g_tab_match_idx = ((g_tab_match_idx % (int)matches.size()) + (int)matches.size()) % (int)matches.size();
+    std::string matched_word = matches[g_tab_match_idx];
 
     std::string new_inserted;
     if (auto_brackets && !matched_word.empty() && matched_word.back() == '(') {
         new_inserted = matched_word + ")";
-        cursor_pos = comp_start + matched_word.size();
+        cursor_pos = g_tab_comp_start + matched_word.size();
     } else {
         new_inserted = matched_word;
-        cursor_pos = comp_start + new_inserted.size();
+        cursor_pos = g_tab_comp_start + new_inserted.size();
     }
 
     if (is_continuation) {
-        expression.replace(comp_start, last_inserted.size(), new_inserted);
+        size_t current_len = g_tab_last_inserted.size();
+        if (g_tab_comp_start + current_len > expression.size()) {
+            current_len = expression.size() - g_tab_comp_start;
+        }
+        expression.replace(g_tab_comp_start, current_len, new_inserted);
     } else {
-        expression.replace(comp_start, orig_prefix.size(), new_inserted);
+        expression.replace(g_tab_comp_start, g_tab_orig_prefix.size(), new_inserted);
     }
-    last_inserted = new_inserted;
+    g_tab_last_inserted = new_inserted;
 }
 
 std::string preprocessArrayLookups(const std::string& expr, std::string& err) {

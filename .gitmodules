@@ -10,3 +10,6 @@
 [submodule "lib/tinyexpr-plusplus"]
 	path = lib/tinyexpr-plusplus
 	url = https://github.com/Blake-Madden/tinyexpr-plusplus.git
+[submodule "lib/gnu-units"]
+	path = lib/gnu-units
+	url = https://github.com/ryantenney/gnu-units.git
