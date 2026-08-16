@@ -9,7 +9,7 @@
 
 [![Build Status](https://github.com/aroum/cardulator/actions/workflows/build.yml/badge.svg)](https://github.com/aroum/cardulator/actions)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)](https://platformio.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 **Cardulator** is a powerful, feature-rich scientific mathematical calculator and REPL scripting environment designed specifically for the **M5Stack Cardputer ADV** (ESP32-S3). Built on top of the robust [`TinyExpr-PlusPlus`](https://github.com/Blake-Madden/tinyexpr-plusplus) engine, Cardulator provides real-time syntax highlighting, rainbow bracket matching, SI prefix parsing, scientific notation, user variables and functions, multi-variable formula wizards, a C-style scripting engine with array support, matrix/vector operations, customizable hotkey binds, and interactive 2D function plotting.
 
@@ -333,5 +333,8 @@ pio run -e cardputer -t upload
 ---
 
 ## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+ 
+This project is licensed under the [GNU General Public License v3.0 (GPLv3)](LICENSE).
+ 
+- **GNU Units**: Licensed under the GNU General Public License v3.0 (GPLv3).
+- **TinyExpr++**: Licensed under the zlib License.
