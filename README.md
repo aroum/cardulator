@@ -7,15 +7,15 @@
 
 ---
 
-[![Build Status](https://github.com/aroum/cardulator/actions/workflows/build.yml/badge.svg)](https://github.com/aroum/cardulator/actions)
-[![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)](https://platformio.org/)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+![Build Status](https://github.com/aroum/cardulator/actions/workflows/build.yml/badge.svg)
+![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
 **Cardulator** is a powerful, feature-rich scientific mathematical calculator and REPL scripting environment designed specifically for the **M5Stack Cardputer ADV** (ESP32-S3). Built on top of the robust [`TinyExpr-PlusPlus`](https://github.com/Blake-Madden/tinyexpr-plusplus) engine, Cardulator provides real-time syntax highlighting, rainbow bracket matching, SI prefix parsing, scientific notation, user variables and functions, multi-variable formula wizards, a C-style scripting engine with array support, matrix/vector operations, customizable hotkey binds, and interactive 2D function plotting.
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
 - **High-Performance REPL**: Interactive evaluation loop with `Tab` autocompletion, 1-based answer history (`e1`, `e2`...), SI prefix parsing (`1k` = `1000`, `2M2` = `2,200,000`), scientific notation (`5e10`), and multi-statement lines using `;`.
 - **Dynamic Syntax Highlighting**: Real-time rainbow bracket depth matching (`( )`), yellow numbers, cyan variables, magenta constants, and red syntax/error highlighting.
@@ -28,7 +28,7 @@
 
 ---
 
-## ⌨️ Controls & Keybindings
+## Controls & Keybindings
 
 ### 1. Navigation & Cursor Control (All Text Fields & Formulas)
 
@@ -60,7 +60,7 @@ Physical keys `,` `/` `;` `.` type their literal characters by default. Navigati
 
 ---
 
-## 🧮 Mathematical Engine & Syntax
+## Mathematical Engine & Syntax
 
 ### 1. Arithmetic & Power Operators
 
@@ -122,7 +122,7 @@ Default angular unit is **Degrees**.
 
 ---
 
-## 🏷️ SI Prefixes
+## SI Prefixes
 
 Cardulator supports standard SI prefixes directly within expressions (e.g., `1.5k + 200` $\rightarrow$ `1700`). SI prefixes can also replace the decimal separator in R-notation (e.g., `1k7` $\rightarrow$ `1700`).
 
@@ -158,7 +158,7 @@ Cardulator supports standard SI prefixes directly within expressions (e.g., `1.5
 
 ---
 
-## 📊 Arrays, Ranges & Inline Conditions/Loops
+## Arrays, Ranges & Inline Conditions/Loops
 
 ### 1. Arrays & Ranges
 
@@ -179,7 +179,7 @@ Cardulator supports standard SI prefixes directly within expressions (e.g., `1.5
 
 ---
 
-## 💻 Custom Variables & Functions
+## Custom Variables & Functions
 
 ### 1. User Variables & Constants
 
@@ -202,7 +202,7 @@ Cardulator supports standard SI prefixes directly within expressions (e.g., `1.5
 
 ---
 
-## 📜 Scripting Engine (`Fn + S`)
+## Scripting Engine (`Fn + S`)
 
 The script manager allows creating, editing, and executing multi-line C-style programs with structural logic.
 
@@ -237,7 +237,7 @@ The script manager allows creating, editing, and executing multi-line C-style pr
 
 ---
 
-## 📈 2D Plotting Engine (`Fn + G`)
+## 2D Plotting Engine (`Fn + G`)
 
 Visualize functions or datasets directly on Cardputer's 1.14" display.
 
@@ -274,7 +274,7 @@ Cardulator includes a comprehensive unit conversion engine powered by `gnu-units
 
 ---
 
-## ⚙️ System Parameters (`Fn + P`)
+## System Parameters (`Fn + P`)
 
 Configure system settings stored in NVS:
 
@@ -294,7 +294,7 @@ Configure system settings stored in NVS:
 
 ---
 
-## 📺 Display Specification & Error Handling
+## Display Specification & Error Handling
 
 - **Display**: 1.14" TFT display (**240 × 135 pixels**).
 - **Sticky Mode Status Bar**: Top 12px status bar displays active state indicator alongside color-coded modifier flags: `fn` (Red), `Aa` (Blue), `opt` (Cyan), `ctrl`/`alt` (Grey).
@@ -303,7 +303,7 @@ Configure system settings stored in NVS:
 
 ---
 
-## 🛠️ Building & Flashing
+## Building & Flashing
 
 ### Prerequisites
 
@@ -332,7 +332,7 @@ pio run -e cardputer -t upload
 
 ---
 
-## 📄 License
+## License
  
 This project is licensed under the [GNU General Public License v3.0 (GPLv3)](LICENSE).
  
