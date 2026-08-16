@@ -110,15 +110,25 @@ Default angular unit is **Degrees**.
 
 ### 7. Built-in Constants
 
-- `pi` (or `PI`) — $\pi \approx 3.14159265$
-- `e` (or `E`) — Euler's number $e \approx 2.71828182$
-- `phi` — Golden ratio $\phi \approx 1.61803398$
+- `pi` — Mathematical constant $\pi \approx 3.141592653589793$
+- `e` — Euler's number $e \approx 2.718281828459045$
 
 #### Disambiguation of `e` Contexts
 
-1. **Constant `e`**: Standalone token (e.g., `e`, `e^2`, `2*e`).
-2. **Scientific Notation**: Joined with numbers (e.g., `5e10` $= 5 \times 10^{10}$, `1e-5` $= 10^{-5}$).
-3. **REPL History**: `e` followed immediately by an index number (e.g., `e1`, `e2`).
+1. **Constant `e`**: Standalone lowercase token (e.g., `e`, `e^2`, `2*e`).
+2. **Scientific Notation**: Numerical suffix exponent (e.g., `5e10` $= 5 \times 10^{10}$, `1e-5` $= 10^{-5}$).
+3. **REPL History**: Sequential history reference (e.g., `e1`, `e2`, `e3`).
+
+---
+
+## Numerical Precision & Limitations
+
+Cardulator performs all mathematical evaluations using **64-bit IEEE 754 Double-Precision Floating-Point** arithmetic (`double`):
+
+- **Significant Precision**: 53-bit significand (~15–17 decimal digits of precision).
+- **Exact Integers**: Exact integer representation up to $\pm 2^{53}$ ($\pm 9,007,199,254,740,992$).
+- **Dynamic Range**: Numbers from $\approx \pm 2.225 \times 10^{-308}$ to $\approx \pm 1.797 \times 10^{308}$.
+- **Special Values**: Full IEEE 754 support for `+inf` / `-inf` (overflow / division by zero) and `NaN` (undefined indeterminate forms).
 
 ---
 
