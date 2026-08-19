@@ -724,11 +724,31 @@ void test_units_conversion(void) {
 
     ConvResult c_awg1 = handleConv(24, "AWG", "mm^2", dat_path);
     TEST_ASSERT_TRUE(c_awg1.success);
-    TEST_ASSERT_DOUBLE_WITHIN(5e-3, 0.2047, c_awg1.value);
+    TEST_ASSERT_FLOAT_WITHIN(0.005, 0.2047, c_awg1.value);
+    TEST_ASSERT_EQUAL_STRING("mm^2", c_awg1.unitStr.c_str());
 
     ConvResult c_awg2 = handleConv(0.205, "mm^2", "AWG", dat_path);
     TEST_ASSERT_TRUE(c_awg2.success);
-    TEST_ASSERT_DOUBLE_WITHIN(0.1, 24.0, c_awg2.value);
+    TEST_ASSERT_FLOAT_WITHIN(0.1, 24.0, c_awg2.value);
+
+    // Standard cross-section (std_mm2) & Standard AWG (std_awg) tests with copper safety margin
+    ConvResult c_std_mm1 = handleConv(2.1, "mm2", "std_mm2", dat_path);
+    TEST_ASSERT_TRUE(c_std_mm1.success);
+    TEST_ASSERT_EQUAL_FLOAT(2.5, c_std_mm1.value);
+    TEST_ASSERT_EQUAL_STRING("std_mm2", c_std_mm1.unitStr.c_str());
+
+    ConvResult c_std_mm2 = handleConv(14, "AWG", "std_mm2", dat_path); // 14 AWG ≈ 2.08 mm^2 -> 2.5 mm^2
+    TEST_ASSERT_TRUE(c_std_mm2.success);
+    TEST_ASSERT_EQUAL_FLOAT(2.5, c_std_mm2.value);
+
+    ConvResult c_std_awg1 = handleConv(2.5, "mm2", "std_awg", dat_path); // 2.5 mm^2 -> 13 AWG for safety
+    TEST_ASSERT_TRUE(c_std_awg1.success);
+    TEST_ASSERT_EQUAL_FLOAT(13.0, c_std_awg1.value);
+    TEST_ASSERT_EQUAL_STRING("std_awg", c_std_awg1.unitStr.c_str());
+
+    ConvResult c_std_awg2 = handleConv(2.08, "mm^2", "std_awg", dat_path); // 2.08 mm^2 -> 14 AWG
+    TEST_ASSERT_TRUE(c_std_awg2.success);
+    TEST_ASSERT_EQUAL_FLOAT(14.0, c_std_awg2.value);
 
     // 5. Component codes (Resistors, Capacitors, Inductors)
     ConvResult c_res1 = handleConv(0, "01C", "ohm", dat_path);

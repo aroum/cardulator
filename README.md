@@ -280,6 +280,7 @@ Cardulator includes a comprehensive unit conversion engine powered by `gnu-units
   - RKM-notation: `conv("2R2", "ohm")` $\rightarrow$ `2.2 ohm`, `conv("R47", "ohm")` $\rightarrow$ `0.47 ohm`
   - Capacitors & Inductors: `conv("104", "uf")` $\rightarrow$ `0.1 uF`, `conv("4R7", "uh")` $\rightarrow$ `4.7 uH`
   - Wire cross-section: `conv(24, "AWG", "mm^2")` $\rightarrow$ `0.2047 mm^2`, `conv(0.205, "mm^2", "AWG")` $\rightarrow$ `24 AWG`
+  - Standard Wire Gauges (with copper safety margin): `conv(2.1, "mm2", "std_mm2")` $\rightarrow$ `2.5 std_mm2`, `conv(2.5, "mm2", "std_awg")` $\rightarrow$ `13 std_awg`
   - Decibels & Power: `conv(30, "dBm", "mW")` $\rightarrow$ `1000 mW`, `conv(20, "dB", "times")` $\rightarrow$ `100 times`
 
 ---

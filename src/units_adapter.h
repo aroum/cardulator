@@ -359,19 +359,94 @@ inline ConvResult handleConv(double value,
         }
     }
 
-    // --- 1. AWG <-> mm^2 ---
-    if ((la == "awg" && (lb == "mm^2" || lb.empty())) ||
-        (la == "mm^2" && lb == "awg")) {
+    // --- 1. AWG <-> mm^2 and Standard Metric/AWG (std_mm2, std_awg) ---
+    // Standard metric cross-sections according to IEC 60228 / GOST 22483 (in mm^2)
+    constexpr static const double STD_MM2_TABLE[] = {
+        0.03, 0.05, 0.08, 0.12, 0.20, 0.35, 0.50, 0.75, 1.0, 1.5, 2.5, 4.0, 6.0, 10.0,
+        16.0, 25.0, 35.0, 50.0, 70.0, 95.0, 120.0, 150.0, 185.0, 240.0, 300.0, 400.0,
+        500.0, 625.0, 630.0, 800.0, 1000.0, 1200.0
+    };
+    constexpr static const size_t STD_MM2_COUNT = sizeof(STD_MM2_TABLE) / sizeof(STD_MM2_TABLE[0]);
+
+    auto awgToMm2 = [](double awg) -> double {
+        double d_mm = 0.127 * std::pow(92.0, (36.0 - awg) / 39.0);
+        return (M_PI / 4.0) * d_mm * d_mm;
+    };
+
+    auto mm2ToAwg = [](double mm2) -> double {
+        double d_mm = 2.0 * std::sqrt(mm2 / M_PI);
+        return 36.0 - 39.0 * (std::log(d_mm / 0.127) / std::log(92.0));
+    };
+
+    // Rounding with copper safety margin (greater or equal cross-section / smaller AWG number)
+    auto toStdMm2 = [&](double mm2) -> double {
+        for (size_t i = 0; i < STD_MM2_COUNT; ++i) {
+            if (STD_MM2_TABLE[i] >= mm2 - 1e-9) {
+                return STD_MM2_TABLE[i];
+            }
+        }
+        return STD_MM2_TABLE[STD_MM2_COUNT - 1];
+    };
+
+    auto toStdAwg = [&](double mm2) -> double {
+        double exactAwg = mm2ToAwg(mm2);
+        // Floor AWG gauge number to ensure standard thicker wire (more copper area)
+        double stdAwg = std::floor(exactAwg + 1e-9);
+        return stdAwg;
+    };
+
+    // Standard metric cross-section unit: std_mm2
+    if ((la == "mm^2" || la == "mm2" || la == "awg" || la == "std_awg") && lb == "std_mm2") {
+        res.success = true;
+        double inputMm2 = (la == "awg" || la == "std_awg") ? awgToMm2(value) : value;
+        res.value = toStdMm2(inputMm2);
+        res.unitStr = "std_mm2";
+        return res;
+    }
+
+    // Standard AWG integer gauge unit: std_awg
+    if ((la == "mm^2" || la == "mm2" || la == "awg" || la == "std_mm2") && lb == "std_awg") {
+        res.success = true;
+        double inputMm2 = (la == "awg") ? awgToMm2(value) : value;
+        res.value = toStdAwg(inputMm2);
+        res.unitStr = "std_awg";
+        return res;
+    }
+
+    // From std_mm2 / std_awg to continuous units
+    if (la == "std_mm2" && (lb == "mm^2" || lb == "mm2" || lb.empty())) {
+        res.success = true;
+        res.value = value;
+        res.unitStr = "mm^2";
+        return res;
+    }
+    if (la == "std_mm2" && lb == "awg") {
+        res.success = true;
+        res.value = mm2ToAwg(value);
+        res.unitStr = "AWG";
+        return res;
+    }
+    if (la == "std_awg" && (lb == "mm^2" || lb == "mm2" || lb.empty())) {
+        res.success = true;
+        res.value = awgToMm2(value);
+        res.unitStr = "mm^2";
+        return res;
+    }
+    if (la == "std_awg" && lb == "awg") {
+        res.success = true;
+        res.value = value;
+        res.unitStr = "AWG";
+        return res;
+    }
+
+    if ((la == "awg" && (lb == "mm^2" || lb == "mm2" || lb.empty())) ||
+        ((la == "mm^2" || la == "mm2") && lb == "awg")) {
         res.success = true;
         if (la == "awg") {
-            // AWG to mm^2: d_mm = 0.127 * 92^((36 - AWG)/39), area = pi/4 * d^2
-            double d_mm = 0.127 * std::pow(92.0, (36.0 - value) / 39.0);
-            res.value = (M_PI / 4.0) * d_mm * d_mm;
+            res.value = awgToMm2(value);
             res.unitStr = "mm^2";
         } else {
-            // mm^2 to AWG: d_mm = 2 * sqrt(area / pi), AWG = 36 - 39 * log(d_mm / 0.127) / log(92)
-            double d_mm = 2.0 * std::sqrt(value / M_PI);
-            res.value = 36.0 - 39.0 * (std::log(d_mm / 0.127) / std::log(92.0));
+            res.value = mm2ToAwg(value);
             res.unitStr = "AWG";
         }
         return res;
