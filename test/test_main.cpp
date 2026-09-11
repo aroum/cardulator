@@ -908,6 +908,22 @@ void test_tab_completion_suite(void) {
 
     user_args.clear();
     user_consts.clear();
+
+    // Context-aware conv units completion
+    reset_tab();
+    std::string expr6 = "conv(10, mm";
+    int cursor6 = 11;
+    handleTabCompletion(expr6, cursor6);
+    TEST_ASSERT_EQUAL_STRING("conv(10, mm", expr6.c_str());
+    TEST_ASSERT_EQUAL_INT(11, cursor6);
+
+    handleTabCompletion(expr6, cursor6);
+    TEST_ASSERT_EQUAL_STRING("conv(10, mm^2", expr6.c_str());
+    TEST_ASSERT_EQUAL_INT(13, cursor6);
+
+    handleTabCompletion(expr6, cursor6);
+    TEST_ASSERT_EQUAL_STRING("conv(10, mm2", expr6.c_str());
+    TEST_ASSERT_EQUAL_INT(12, cursor6);
 }
 
 void test_plot_limits_extended(void) {

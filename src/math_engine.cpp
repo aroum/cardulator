@@ -1304,6 +1304,29 @@ void handleTabCompletion(std::string& expression, int& cursor_pos) {
         check_candidate(sf.name + "(");
     }
 
+    // 4. Units autocompletion inside conv(...)
+    bool is_in_conv = false;
+    std::string left_ctx = expression.substr(0, g_tab_comp_start);
+    size_t last_conv = left_ctx.rfind("conv(");
+    if (last_conv != std::string::npos) {
+        std::string after_conv = left_ctx.substr(last_conv + 5);
+        if (after_conv.find(')') == std::string::npos) {
+            is_in_conv = true;
+        }
+    }
+    if (is_in_conv) {
+        static const std::vector<std::string> conv_units = {
+            "mm", "mm^2", "mm2", "std_mm2", "m", "cm", "km", "mile",
+            "awg", "std_awg", "ohm", "smd3", "smd4", "eia96",
+            "uf", "nf", "pf", "uh", "mh", "nh", "farad", "henry",
+            "db", "dbm", "dbw", "dbv", "dbmv", "dbuv", "dbu", "times",
+            "kg", "g", "lb", "oz", "sec", "min", "hr"
+        };
+        for (const auto& u : conv_units) {
+            check_candidate(u);
+        }
+    }
+
     if (matches.empty()) {
         resetTabState();
         return;
