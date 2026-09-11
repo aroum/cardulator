@@ -530,13 +530,33 @@ inline ConvResult handleConv(double value,
         UNITS_LOGI("GNU Units bridge initialised");
     }
 
+    // Normalize commonly typed case variations for GNU Units database
+    auto normalizeGnuUnit = [&](const std::string& u) -> std::string {
+        std::string low = toLower(u);
+        if (low == "mmhg") return "mmHg";
+        if (low == "inhg") return "inHg";
+        if (low == "pa")   return "Pa";
+        if (low == "kpa")  return "kPa";
+        if (low == "mpa")  return "MPa";
+        if (low == "gpa")  return "GPa";
+        if (low == "mbar") return "mbar";
+        if (low == "hz")   return "Hz";
+        if (low == "khz")  return "kHz";
+        if (low == "mhz")  return "MHz";
+        if (low == "ghz")  return "GHz";
+        return u;
+    };
+
+    std::string norm_unit_a = normalizeGnuUnit(unit_a);
+    std::string norm_unit_b = normalizeGnuUnit(unit_b);
+    const char *want = norm_unit_b.empty() ? nullptr : norm_unit_b.c_str();
+
     double     out_value = 0.0;
     char       si_buf[128] = {};
     char       err_buf[256] = {};
-    const char *want = unit_b.empty() ? nullptr : unit_b.c_str();
 
     int rc = bridge_convert(value,
-                            unit_a.c_str(),
+                            norm_unit_a.c_str(),
                             want,
                             &out_value,
                             si_buf, sizeof(si_buf),

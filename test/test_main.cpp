@@ -918,12 +918,44 @@ void test_tab_completion_suite(void) {
     TEST_ASSERT_EQUAL_INT(11, cursor6);
 
     handleTabCompletion(expr6, cursor6);
-    TEST_ASSERT_EQUAL_STRING("conv(10, mm^2", expr6.c_str());
+    TEST_ASSERT_EQUAL_STRING("conv(10, mmHg", expr6.c_str());
     TEST_ASSERT_EQUAL_INT(13, cursor6);
 
     handleTabCompletion(expr6, cursor6);
-    TEST_ASSERT_EQUAL_STRING("conv(10, mm2", expr6.c_str());
-    TEST_ASSERT_EQUAL_INT(12, cursor6);
+    TEST_ASSERT_EQUAL_STRING("conv(10, mm^2", expr6.c_str());
+    TEST_ASSERT_EQUAL_INT(13, cursor6);
+
+    // Dimension-aware filtering: length source "mm" completing "k" gives "km", NOT "kg"
+    reset_tab();
+    std::string expr_len = "conv(10, \"mm\", k";
+    int cur_len = 16;
+    handleTabCompletion(expr_len, cur_len);
+    TEST_ASSERT_EQUAL_STRING("conv(10, \"mm\", km", expr_len.c_str());
+    TEST_ASSERT_EQUAL_INT(17, cur_len);
+
+    // Dimension-aware filtering: pressure source "mmHg" completing "a" gives "atm"
+    reset_tab();
+    std::string expr_press = "conv(10, \"mmHg\", a";
+    int cur_press = 18;
+    handleTabCompletion(expr_press, cur_press);
+    TEST_ASSERT_EQUAL_STRING("conv(10, \"mmHg\", atm", expr_press.c_str());
+    TEST_ASSERT_EQUAL_INT(20, cur_press);
+
+    // Dimension-aware filtering: mass source "kg" completing "p" gives "pound", NOT "Pa" or "psi"
+    reset_tab();
+    std::string expr_mass = "conv(10, \"kg\", p";
+    int cur_mass = 16;
+    handleTabCompletion(expr_mass, cur_mass);
+    TEST_ASSERT_EQUAL_STRING("conv(10, \"kg\", pound", expr_mass.c_str());
+    TEST_ASSERT_EQUAL_INT(20, cur_mass);
+
+    // Dimension-aware filtering: wire/area source "awg" completing "m" gives "mm^2"
+    reset_tab();
+    std::string expr_wire = "conv(10, \"awg\", m";
+    int cur_wire = 17;
+    handleTabCompletion(expr_wire, cur_wire);
+    TEST_ASSERT_EQUAL_STRING("conv(10, \"awg\", mm^2", expr_wire.c_str());
+    TEST_ASSERT_EQUAL_INT(20, cur_wire);
 }
 
 void test_plot_limits_extended(void) {

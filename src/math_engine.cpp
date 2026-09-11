@@ -1226,6 +1226,96 @@ static size_t g_tab_comp_start = 0;
 static int g_tab_match_idx = -1;
 static std::string g_tab_last_inserted = "";
 
+static std::vector<std::string> get_unit_dimensions(const std::string& raw_unit) {
+    std::string u = raw_unit;
+    size_t first = u.find_first_not_of(" \t\"'");
+    if (first == std::string::npos) return {};
+    size_t last = u.find_last_not_of(" \t\"'");
+    u = u.substr(first, last - first + 1);
+    std::transform(u.begin(), u.end(), u.begin(), ::tolower);
+
+    std::vector<std::string> dims;
+    auto in_set = [&](const std::initializer_list<const char*>& items) {
+        for (const char* it : items) {
+            if (u == it) return true;
+        }
+        return false;
+    };
+
+    if (in_set({"mm", "m", "meter", "meters", "cm", "km", "mile", "miles", "yard", "yards", "foot", "feet", "inch", "inches", "in", "ft", "yd", "nauticalmile", "angstrom", "au"})) {
+        dims.push_back("length");
+    }
+    if (in_set({"mm^2", "mm2", "std_mm2", "awg", "std_awg", "m^2", "m2", "cm^2", "cm2", "km^2", "km2", "hectare", "acre", "acres", "sqft", "sqin"})) {
+        dims.push_back("area_wire");
+    }
+    if (in_set({"m^3", "m3", "cm^3", "cm3", "liter", "liters", "litre", "litres", "l", "ml", "dl", "cl", "gal", "gallon", "gallons", "quart", "quarts", "pint", "pints", "cup", "cups", "floz", "tbsp", "tsp", "barrel"})) {
+        dims.push_back("volume");
+    }
+    if (in_set({"mmhg", "torr", "atm", "bar", "mbar", "pa", "pascal", "kpa", "mpa", "gpa", "psi", "psf", "inhg"})) {
+        dims.push_back("pressure");
+    }
+    if (in_set({"ohm", "ohms", "mohm", "kohm", "smd3", "smd4", "eia96"})) {
+        dims.push_back("resistance");
+    } else if (!u.empty()) {
+        bool all_digits = std::all_of(u.begin(), u.end(), ::isdigit);
+        if ((u.size() == 3 || u.size() == 4) && all_digits) {
+            dims.push_back("resistance");
+        } else if (u.find('r') != std::string::npos || u.find('k') != std::string::npos) {
+            bool is_rkm = true;
+            for (char c : u) {
+                if (!std::isdigit((unsigned char)c) && c != 'r' && c != 'k') { is_rkm = false; break; }
+            }
+            if (is_rkm) dims.push_back("resistance");
+        }
+    }
+    if (in_set({"farad", "f", "uf", "nf", "pf"})) {
+        dims.push_back("capacitance");
+    }
+    if (in_set({"henry", "h", "uh", "mh", "nh"})) {
+        dims.push_back("inductance");
+    }
+    if (in_set({"ampere", "amp", "amps", "a", "ma", "ua", "ka"})) {
+        dims.push_back("current");
+    }
+    if (in_set({"volt", "volts", "v", "mv", "uv", "kv", "dbv", "dbmv", "dbuv", "dbu"})) {
+        dims.push_back("voltage");
+    }
+    if (in_set({"watt", "watts", "w", "mw", "uw", "kw", "gw", "hp", "horsepower", "dbm", "dbw"})) {
+        dims.push_back("power");
+    }
+    if (in_set({"db", "times", "ratio", "dbm", "dbw", "dbv", "dbmv", "dbuv", "dbu"})) {
+        dims.push_back("db_ratio");
+    }
+    if (in_set({"hz", "khz", "mhz", "ghz"})) {
+        dims.push_back("frequency");
+    }
+    if (in_set({"kg", "kilogram", "kilograms", "g", "gram", "grams", "mg", "ug", "ton", "tonne", "tonnes", "lb", "pound", "pounds", "oz", "ounce", "ounces", "stone", "carat"})) {
+        dims.push_back("mass");
+    }
+    if (in_set({"s", "sec", "second", "seconds", "ms", "us", "ns", "min", "minute", "minutes", "hr", "hour", "hours", "day", "days", "week", "weeks", "month", "months", "year", "years"})) {
+        dims.push_back("time");
+    }
+    if (in_set({"m/s", "km/hr", "km/h", "kph", "mph", "knot", "knots", "mach"})) {
+        dims.push_back("speed");
+    }
+    if (in_set({"joule", "joules", "j", "kj", "mj", "cal", "calorie", "calories", "kcal", "ev", "kev", "mev", "gev", "wh", "kwh", "mwh", "btu"})) {
+        dims.push_back("energy");
+    }
+    if (in_set({"newton", "newtons", "n", "kn", "dyn", "dyne", "lbf", "kgf"})) {
+        dims.push_back("force");
+    }
+    if (in_set({"degc", "degf", "kelvin", "k"})) {
+        dims.push_back("temperature");
+    }
+    if (in_set({"deg", "degree", "degrees", "rad", "radian", "radians"})) {
+        dims.push_back("angle");
+    }
+    if (in_set({"coulomb", "tesla", "weber"})) {
+        dims.push_back("em");
+    }
+    return dims;
+}
+
 void resetTabState() {
     g_tab_orig_prefix = "";
     g_tab_last_inserted = "";
@@ -1279,51 +1369,129 @@ void handleTabCompletion(std::string& expression, int& cursor_pos) {
         }
     };
 
-    // 1. Built-in constants (pi, e, phi) & User variables/constants first
-    for (const auto& w : autocomplete_words) {
-        if (w == "pi" || w == "e" || w == "phi") check_candidate(w);
-    }
-    for (const auto& arg : user_args) check_candidate(arg.name);
-    for (const auto& cn : user_consts) check_candidate(cn.name);
-
-    // 2. Built-in math functions & history variables (e1, e2, e3...)
-    for (const auto& w : autocomplete_words) {
-        if (w != "pi" && w != "e" && w != "phi") check_candidate(w);
-    }
-    for (size_t i = 0; i < history.size(); ++i) check_candidate("e" + std::to_string(i + 1));
-
-    // 3. User formulas & scripts
-    for (const auto& func : user_funcs) {
-        size_t paren = func.find('(');
-        if (paren != std::string::npos) {
-            std::string fname = func.substr(0, paren + 1);
-            if (!fname.empty()) check_candidate(fname);
-        }
-    }
-    for (const auto& sf : user_script_funcs) {
-        check_candidate(sf.name + "(");
-    }
-
-    // 4. Units autocompletion inside conv(...)
+    // Check if inside conv(...) and specifically in a unit argument position (after comma)
     bool is_in_conv = false;
+    std::string from_unit = "";
     std::string left_ctx = expression.substr(0, g_tab_comp_start);
     size_t last_conv = left_ctx.rfind("conv(");
     if (last_conv != std::string::npos) {
         std::string after_conv = left_ctx.substr(last_conv + 5);
         if (after_conv.find(')') == std::string::npos) {
             is_in_conv = true;
+            std::vector<std::string> args;
+            std::string cur_arg;
+            bool in_q = false;
+            char q_char = 0;
+            for (char ch : after_conv) {
+                if ((ch == '"' || ch == '\'') && (!in_q || ch == q_char)) {
+                    in_q = !in_q;
+                    q_char = in_q ? ch : 0;
+                    cur_arg += ch;
+                } else if (ch == ',' && !in_q) {
+                    args.push_back(cur_arg);
+                    cur_arg.clear();
+                } else {
+                    cur_arg += ch;
+                }
+            }
+            if (args.size() >= 2) {
+                from_unit = args[args.size() - 1];
+            } else if (args.size() == 1) {
+                std::string a0 = args[0];
+                size_t f = a0.find_first_not_of(" \t\"'");
+                size_t l = a0.find_last_not_of(" \t\"'");
+                if (f != std::string::npos && l != std::string::npos) {
+                    std::string s = a0.substr(f, l - f + 1);
+                    size_t p = s.find_last_of(" 0123456789+-*/^");
+                    if (p != std::string::npos && p + 1 < s.size() && std::isalpha((unsigned char)s[p + 1])) {
+                        from_unit = s.substr(p + 1);
+                    }
+                }
+            }
         }
     }
-    if (is_in_conv) {
+
+    if (is_in_conv && left_ctx.substr(last_conv + 5).find(',') != std::string::npos) {
         static const std::vector<std::string> conv_units = {
-            "mm", "mm^2", "mm2", "std_mm2", "m", "cm", "km", "mile",
-            "awg", "std_awg", "ohm", "smd3", "smd4", "eia96",
-            "uf", "nf", "pf", "uh", "mh", "nh", "farad", "henry",
-            "db", "dbm", "dbw", "dbv", "dbmv", "dbuv", "dbu", "times",
-            "kg", "g", "lb", "oz", "sec", "min", "hr"
+            "mm", "mmHg", "mm^2", "mm2", "std_mm2", "m", "meter", "cm", "km", "mile", "yard", "foot", "inch", "in", "ft", "yd",
+            "m^2", "m2", "cm^2", "cm2", "km^2", "km2", "hectare", "acre",
+            "m^3", "m3", "liter", "l", "ml", "dl", "cl", "gal", "gallon", "quart", "pint", "cup", "floz", "tbsp", "tsp", "barrel",
+            "torr", "atm", "bar", "mbar", "Pa", "pascal", "kPa", "MPa", "GPa", "psi", "inHg",
+            "ohm", "mohm", "kohm", "Mohm", "smd3", "smd4", "eia96", "awg", "std_awg",
+            "farad", "F", "uF", "uf", "nF", "nf", "pF", "pf",
+            "henry", "H", "uH", "uh", "mH", "mh", "nH", "nh",
+            "ampere", "amp", "A", "mA", "uA", "kA",
+            "volt", "V", "mV", "uV", "kV", "MV",
+            "watt", "W", "mW", "uW", "kW", "MW", "GW", "hp",
+            "Hz", "khz", "mhz", "ghz",
+            "dB", "db", "dBm", "dbm", "dBW", "dbw", "dBV", "dbv", "dBmV", "dbmv", "dBuV", "dbuv", "dBu", "dbu", "times", "ratio",
+            "kg", "kilogram", "g", "gram", "mg", "ug", "ton", "tonne", "lb", "pound", "oz", "ounce",
+            "s", "sec", "second", "ms", "us", "ns", "min", "minute", "hr", "hour", "day", "week", "month", "year",
+            "m/s", "km/hr", "km/h", "kph", "mph", "knot", "mach",
+            "joule", "J", "kJ", "MJ", "cal", "calorie", "kcal", "eV", "keV", "MeV", "GeV", "Wh", "kWh", "MWh", "BTU",
+            "newton", "N", "kN", "dyn", "dyne", "lbf", "kgf",
+            "degC", "degF", "kelvin", "K", "deg", "degree", "rad", "radian"
         };
+
+        std::vector<std::string> from_dims = get_unit_dimensions(from_unit);
+
+        auto check_unit_candidate = [&](const std::string& word) {
+            if (word.size() >= g_tab_orig_prefix.size()) {
+                bool match = true;
+                for (size_t i = 0; i < g_tab_orig_prefix.size(); ++i) {
+                    if (std::tolower((unsigned char)word[i]) != std::tolower((unsigned char)g_tab_orig_prefix[i])) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) {
+                    if (std::find(matches.begin(), matches.end(), word) == matches.end()) {
+                        matches.push_back(word);
+                    }
+                }
+            }
+        };
+
         for (const auto& u : conv_units) {
-            check_candidate(u);
+            if (!from_dims.empty()) {
+                std::vector<std::string> u_dims = get_unit_dimensions(u);
+                bool match_dim = false;
+                for (const auto& d1 : from_dims) {
+                    for (const auto& d2 : u_dims) {
+                        if (d1 == d2) { match_dim = true; break; }
+                    }
+                    if (match_dim) break;
+                }
+                if (!match_dim) continue;
+            }
+            check_unit_candidate(u);
+        }
+    }
+
+    if (matches.empty()) {
+        // 1. Built-in constants (pi, e, phi) & User variables/constants first
+        for (const auto& w : autocomplete_words) {
+            if (w == "pi" || w == "e" || w == "phi") check_candidate(w);
+        }
+        for (const auto& arg : user_args) check_candidate(arg.name);
+        for (const auto& cn : user_consts) check_candidate(cn.name);
+
+        // 2. Built-in math functions & history variables (e1, e2, e3...)
+        for (const auto& w : autocomplete_words) {
+            if (w != "pi" && w != "e" && w != "phi") check_candidate(w);
+        }
+        for (size_t i = 0; i < history.size(); ++i) check_candidate("e" + std::to_string(i + 1));
+
+        // 3. User formulas & scripts
+        for (const auto& func : user_funcs) {
+            size_t paren = func.find('(');
+            if (paren != std::string::npos) {
+                std::string fname = func.substr(0, paren + 1);
+                if (!fname.empty()) check_candidate(fname);
+            }
+        }
+        for (const auto& sf : user_script_funcs) {
+            check_candidate(sf.name + "(");
         }
     }
 
