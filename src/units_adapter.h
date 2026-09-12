@@ -521,6 +521,182 @@ inline ConvResult handleConv(double value,
         }
     }
 
+    // --- 2.5 Built-in Standard Physical Unit Conversions (Offline / Flash fallback) ---
+    {
+        // Length (base: meter)
+        auto getLengthFactor = [](const std::string& u, double& factor, std::string& canonical) -> bool {
+            if (u == "m" || u == "meter" || u == "meters") { factor = 1.0; canonical = "m"; return true; }
+            if (u == "mm") { factor = 1e-3; canonical = "mm"; return true; }
+            if (u == "cm") { factor = 1e-2; canonical = "cm"; return true; }
+            if (u == "km") { factor = 1e3; canonical = "km"; return true; }
+            if (u == "in" || u == "inch" || u == "inches") { factor = 0.0254; canonical = "inch"; return true; }
+            if (u == "ft" || u == "foot" || u == "feet") { factor = 0.3048; canonical = "ft"; return true; }
+            if (u == "yd" || u == "yard" || u == "yards") { factor = 0.9144; canonical = "yd"; return true; }
+            if (u == "mi" || u == "mile" || u == "miles") { factor = 1609.344; canonical = "mile"; return true; }
+            if (u == "nauticalmile" || u == "nmi") { factor = 1852.0; canonical = "nmi"; return true; }
+            if (u == "angstrom") { factor = 1e-10; canonical = "angstrom"; return true; }
+            if (u == "au") { factor = 149597870700.0; canonical = "au"; return true; }
+            return false;
+        };
+
+        // Mass (base: kg)
+        auto getMassFactor = [](const std::string& u, double& factor, std::string& canonical) -> bool {
+            if (u == "kg" || u == "kilogram" || u == "kilograms") { factor = 1.0; canonical = "kg"; return true; }
+            if (u == "g" || u == "gram" || u == "grams") { factor = 1e-3; canonical = "g"; return true; }
+            if (u == "mg") { factor = 1e-6; canonical = "mg"; return true; }
+            if (u == "ug") { factor = 1e-9; canonical = "ug"; return true; }
+            if (u == "lb" || u == "lbs" || u == "pound" || u == "pounds") { factor = 0.45359237; canonical = "lb"; return true; }
+            if (u == "oz" || u == "ounce" || u == "ounces") { factor = 0.028349523125; canonical = "oz"; return true; }
+            if (u == "ton" || u == "tonne" || u == "tonnes") { factor = 1000.0; canonical = "ton"; return true; }
+            if (u == "stone") { factor = 6.35029318; canonical = "stone"; return true; }
+            if (u == "carat") { factor = 0.0002; canonical = "carat"; return true; }
+            return false;
+        };
+
+        // Time (base: second)
+        auto getTimeFactor = [](const std::string& u, double& factor, std::string& canonical) -> bool {
+            if (u == "s" || u == "sec" || u == "second" || u == "seconds") { factor = 1.0; canonical = "s"; return true; }
+            if (u == "ms") { factor = 1e-3; canonical = "ms"; return true; }
+            if (u == "us") { factor = 1e-6; canonical = "us"; return true; }
+            if (u == "ns") { factor = 1e-9; canonical = "ns"; return true; }
+            if (u == "min" || u == "minute" || u == "minutes") { factor = 60.0; canonical = "min"; return true; }
+            if (u == "hr" || u == "hour" || u == "hours") { factor = 3600.0; canonical = "hr"; return true; }
+            if (u == "day" || u == "days") { factor = 86400.0; canonical = "day"; return true; }
+            if (u == "week" || u == "weeks") { factor = 604800.0; canonical = "week"; return true; }
+            if (u == "year" || u == "years") { factor = 31557600.0; canonical = "year"; return true; }
+            return false;
+        };
+
+        // Pressure (base: Pascal)
+        auto getPressureFactor = [](const std::string& u, double& factor, std::string& canonical) -> bool {
+            if (u == "pa" || u == "pascal") { factor = 1.0; canonical = "Pa"; return true; }
+            if (u == "kpa") { factor = 1e3; canonical = "kPa"; return true; }
+            if (u == "mpa") { factor = 1e6; canonical = "MPa"; return true; }
+            if (u == "gpa") { factor = 1e9; canonical = "GPa"; return true; }
+            if (u == "bar") { factor = 1e5; canonical = "bar"; return true; }
+            if (u == "mbar") { factor = 100.0; canonical = "mbar"; return true; }
+            if (u == "atm") { factor = 101325.0; canonical = "atm"; return true; }
+            if (u == "torr" || u == "mmhg") { factor = 101325.0 / 760.0; canonical = (u == "mmhg" ? "mmHg" : "torr"); return true; }
+            if (u == "psi") { factor = 6894.757293168; canonical = "psi"; return true; }
+            if (u == "psf") { factor = 47.88025898; canonical = "psf"; return true; }
+            if (u == "inhg") { factor = 3386.38866667; canonical = "inHg"; return true; }
+            return false;
+        };
+
+        // Volume (base: liter)
+        auto getVolumeFactor = [](const std::string& u, double& factor, std::string& canonical) -> bool {
+            if (u == "l" || u == "liter" || u == "liters" || u == "litre" || u == "litres") { factor = 1.0; canonical = "l"; return true; }
+            if (u == "ml") { factor = 1e-3; canonical = "ml"; return true; }
+            if (u == "dl") { factor = 1e-1; canonical = "dl"; return true; }
+            if (u == "cl") { factor = 1e-2; canonical = "cl"; return true; }
+            if (u == "m^3" || u == "m3") { factor = 1000.0; canonical = "m^3"; return true; }
+            if (u == "cm^3" || u == "cm3") { factor = 1e-3; canonical = "cm^3"; return true; }
+            if (u == "gal" || u == "gallon" || u == "gallons") { factor = 3.785411784; canonical = "gal"; return true; }
+            if (u == "quart" || u == "quarts") { factor = 0.946352946; canonical = "quart"; return true; }
+            if (u == "pint" || u == "pints") { factor = 0.473176473; canonical = "pint"; return true; }
+            if (u == "cup" || u == "cups") { factor = 0.2365882365; canonical = "cup"; return true; }
+            if (u == "floz") { factor = 0.0295735295625; canonical = "floz"; return true; }
+            if (u == "tbsp") { factor = 0.01478676478125; canonical = "tbsp"; return true; }
+            if (u == "tsp") { factor = 0.00492892159375; canonical = "tsp"; return true; }
+            if (u == "barrel") { factor = 158.987294928; canonical = "barrel"; return true; }
+            return false;
+        };
+
+        // Temperature (special conversion)
+        auto isTemp = [](const std::string& u) {
+            return u == "degc" || u == "degf" || u == "k" || u == "kelvin";
+        };
+
+        if (isTemp(la) && (isTemp(lb) || lb.empty())) {
+            double k = 0.0;
+            if (la == "degc") k = value + 273.15;
+            else if (la == "degf") k = (value - 32.0) * 5.0 / 9.0 + 273.15;
+            else k = value;
+
+            res.success = true;
+            if (lb.empty() || lb == "k" || lb == "kelvin") {
+                res.value = k;
+                res.unitStr = "K";
+            } else if (lb == "degc") {
+                res.value = k - 273.15;
+                res.unitStr = "degC";
+            } else if (lb == "degf") {
+                res.value = (k - 273.15) * 9.0 / 5.0 + 32.0;
+                res.unitStr = "degF";
+            }
+            return res;
+        }
+
+        // Check standard dimension groups
+        double f_a = 0.0, f_b = 0.0;
+        std::string can_a, can_b;
+        if (getLengthFactor(la, f_a, can_a)) {
+            if (lb.empty()) {
+                res.success = true;
+                res.value = value * f_a;
+                res.unitStr = "m";
+                return res;
+            } else if (getLengthFactor(lb, f_b, can_b)) {
+                res.success = true;
+                res.value = (value * f_a) / f_b;
+                res.unitStr = unit_b.empty() ? can_b : unit_b;
+                return res;
+            }
+        }
+        if (getMassFactor(la, f_a, can_a)) {
+            if (lb.empty()) {
+                res.success = true;
+                res.value = value * f_a;
+                res.unitStr = "kg";
+                return res;
+            } else if (getMassFactor(lb, f_b, can_b)) {
+                res.success = true;
+                res.value = (value * f_a) / f_b;
+                res.unitStr = unit_b.empty() ? can_b : unit_b;
+                return res;
+            }
+        }
+        if (getTimeFactor(la, f_a, can_a)) {
+            if (lb.empty()) {
+                res.success = true;
+                res.value = value * f_a;
+                res.unitStr = "s";
+                return res;
+            } else if (getTimeFactor(lb, f_b, can_b)) {
+                res.success = true;
+                res.value = (value * f_a) / f_b;
+                res.unitStr = unit_b.empty() ? can_b : unit_b;
+                return res;
+            }
+        }
+        if (getPressureFactor(la, f_a, can_a)) {
+            if (lb.empty()) {
+                res.success = true;
+                res.value = value * f_a;
+                res.unitStr = "Pa";
+                return res;
+            } else if (getPressureFactor(lb, f_b, can_b)) {
+                res.success = true;
+                res.value = (value * f_a) / f_b;
+                res.unitStr = unit_b.empty() ? can_b : unit_b;
+                return res;
+            }
+        }
+        if (getVolumeFactor(la, f_a, can_a)) {
+            if (lb.empty()) {
+                res.success = true;
+                res.value = value * f_a;
+                res.unitStr = "l";
+                return res;
+            } else if (getVolumeFactor(lb, f_b, can_b)) {
+                res.success = true;
+                res.value = (value * f_a) / f_b;
+                res.unitStr = unit_b.empty() ? can_b : unit_b;
+                return res;
+            }
+        }
+    }
+
     // --- 3. Fallback to GNU Units bridge ---
     static bool s_init = false;
     if (!s_init) {

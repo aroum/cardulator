@@ -3,9 +3,17 @@
 SET_LOOP_TASK_STACK_SIZE(32768);
 #include <esp_task_wdt.h>
 #endif
+#if defined(CARDULATOR_TDECK_PRO)
+#include "tdeck_pro.h"
+#define SCR_W TDECK_SCR_W
+#define SCR_H TDECK_SCR_H
+#else
 #include <M5Cardputer.h>
 #include <utility/Keyboard/KeyboardReader/IOMatrix.h>
 #include <utility/Keyboard/KeyboardReader/TCA8418.h>
+#define SCR_W 240
+#define SCR_H 135
+#endif
 #include <SD.h>
 #include <SPI.h>
 #ifdef ARDUINO
@@ -18,11 +26,14 @@ SET_LOOP_TASK_STACK_SIZE(32768);
 #include "config.h"
 
 #define VERSION "1.2"
-#define SCR_W 240
-#define SCR_H 135
 #define EXPR_Y 22
 #define EXPR_SIZE 2
 #define RES_Y 70
+
+#define INP_LINE1_Y (SCR_H - 30)
+#define INP_LINE2_Y (SCR_H - 17)
+#define INP_DIV1_Y  (SCR_H - 34)
+#define INP_DIV2_Y  (SCR_H - 21)
 
 #include "app_state.h"
 #include "help_engine.h"
@@ -701,6 +712,14 @@ static void saveSDData() {}
 
 
 #ifdef ARDUINO
+#if defined(CARDULATOR_TDECK_PRO)
+static M5Canvas canvas;
+static bool canvas_ready = false;
+static lgfx::LovyanGFX& getGfx() {
+    return canvas;
+}
+#define GFX getGfx()
+#else
 static M5Canvas canvas(&M5Cardputer.Display);
 static bool canvas_ready = false;
 static lgfx::LovyanGFX& getGfx() {
@@ -708,21 +727,36 @@ static lgfx::LovyanGFX& getGfx() {
     return M5Cardputer.Display;
 }
 #define GFX getGfx()
+#endif
 #else
 #define GFX M5Cardputer.Display
 #endif
+
+static inline void flushScreen(bool force_full = false) {
+#if defined(CARDULATOR_TDECK_PRO)
+    if (canvas_ready) {
+        TDeckHAL::flushDisplay(canvas, force_full);
+    }
+#else
+    #ifdef ARDUINO
+    if (canvas_ready) {
+        canvas.pushSprite(0, 0);
+    }
+    #endif
+#endif
+}
 
 static void drawHighlightedExpression(const std::string& expr) {
     int n = expr.size();
     if (select_all_active && n > 0) {
         GFX.setTextColor(TFT_WHITE, TFT_BLUE);
         if (n > 19) {
-            GFX.setCursor(2, 105);
+            GFX.setCursor(2, INP_LINE1_Y);
             GFX.print(expr.substr(0, 19).c_str());
-            GFX.setCursor(2, 118);
+            GFX.setCursor(2, INP_LINE2_Y);
             GFX.print(expr.substr(19).c_str());
         } else {
-            GFX.setCursor(2, 118);
+            GFX.setCursor(2, INP_LINE2_Y);
             GFX.print(expr.c_str());
         }
         GFX.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -730,9 +764,9 @@ static void drawHighlightedExpression(const std::string& expr) {
     }
     
     if (n > 19) {
-        GFX.setCursor(2, 105);
+        GFX.setCursor(2, INP_LINE1_Y);
     } else {
-        GFX.setCursor(2, 118);
+        GFX.setCursor(2, INP_LINE2_Y);
     }
     
     // Calculate parenthesis/brace/bracket nesting levels globally to keep colors consistent
@@ -754,7 +788,7 @@ static void drawHighlightedExpression(const std::string& expr) {
     GFX.setTextColor(TFT_WHITE);
     for (int i = 0; i < n; ) {
         if (i == 19) {
-            GFX.setCursor(2, 118);
+            GFX.setCursor(2, INP_LINE2_Y);
         }
         
         if (i == cursor_pos && !select_all_active) {
@@ -868,7 +902,7 @@ static void drawHighlightedExpression(const std::string& expr) {
     
     if (cursor_pos == n && !select_all_active) {
         if (n == 19) {
-            GFX.setCursor(2, 118);
+            GFX.setCursor(2, INP_LINE2_Y);
         }
         int cx = GFX.getCursorX();
         GFX.drawFastVLine(cx > 0 ? cx - 1 : 0, GFX.getCursorY(), 16, TFT_CYAN);
@@ -1003,9 +1037,15 @@ static void drawStatusBar(const std::string& mode) {
     GFX.drawLine(0, 11, SCR_W, 11, TFT_DARKGREY);
 
     // Draw battery status on the right (without percentages)
+#if defined(CARDULATOR_TDECK_PRO)
+    int bat = 100;
+    bool is_charging = false;
+#else
     int bat = M5Cardputer.Power.getBatteryLevel();
     if (bat < 0) bat = 0;
     if (bat > 100) bat = 100;
+    bool is_charging = (M5Cardputer.Power.isCharging() == m5::Power_Class::is_charging);
+#endif
 
     int batX = SCR_W - 22;
     int batY = 2;
@@ -1021,7 +1061,7 @@ static void drawStatusBar(const std::string& mode) {
     }
 
     int boltX = batX - 8;
-    if (M5Cardputer.Power.isCharging() == m5::Power_Class::is_charging) {
+    if (is_charging) {
         GFX.drawLine(boltX + 2, batY, boltX + 4, batY + 4, TFT_YELLOW);
         GFX.drawLine(boltX + 4, batY + 4, boltX + 1, batY + 4, TFT_YELLOW);
         GFX.drawLine(boltX + 1, batY + 4, boltX + 3, batY + 8, TFT_YELLOW);
@@ -1029,7 +1069,7 @@ static void drawStatusBar(const std::string& mode) {
 
     // Draw active modifier badges to the left of battery
     int badgeRightX = batX - 4;
-    if (M5Cardputer.Power.isCharging() == m5::Power_Class::is_charging) {
+    if (is_charging) {
         badgeRightX = boltX - 4;
     }
 
@@ -1038,10 +1078,19 @@ static void drawStatusBar(const std::string& mode) {
         int badge_w = label_len * 6 + 3;
         int badge_x = badgeRightX - badge_w;
         if (badge_x > 80) {
+#if defined(CARDULATOR_TDECK_PRO)
+            // On monochrome 1-bit E-Ink: solid fill and text both map to black ink (creating a solid black box).
+            // Instead, draw a 1px border and print text inside on black (which renders as black ink on white paper).
+            GFX.drawRect(badge_x, 1, badge_w, 9, TFT_WHITE);
+            GFX.setTextColor(TFT_WHITE);
+            GFX.setCursor(badge_x + 2, 2);
+            GFX.print(label);
+#else
             GFX.fillRect(badge_x, 1, badge_w, 9, bg_color);
             GFX.setTextColor(text_color);
             GFX.setCursor(badge_x + 2, 2);
             GFX.print(label);
+#endif
             badgeRightX = badge_x - 3;
         }
     };
@@ -1051,6 +1100,16 @@ static void drawStatusBar(const std::string& mode) {
     if (sticky_opt_active) drawBadge("opt", 0x07FF /* Cyan */, TFT_BLACK);
     if (sticky_ctrl_active) drawBadge("ctrl", 0x7BEF /* Grey */, TFT_WHITE);
     if (sticky_alt_active) drawBadge("alt", 0x7BEF /* Grey */, TFT_WHITE);
+#if defined(CARDULATOR_TDECK_PRO)
+    if (TDeckHAL::getLastPressedRow() >= 0 && TDeckHAL::getLastPressedCol() >= 0) {
+        char key_pos_buf[16];
+        snprintf(key_pos_buf, sizeof(key_pos_buf), "r%dc%d", TDeckHAL::getLastPressedRow(), TDeckHAL::getLastPressedCol());
+        drawBadge(key_pos_buf, TFT_DARKGREY, TFT_WHITE);
+    }
+    if (TDeckHAL::isSymActive()) drawBadge("SYM", 0xF800 /* Red */, TFT_WHITE);
+    if (TDeckHAL::isAltActive()) drawBadge("ALT", 0x7BEF /* Grey */, TFT_WHITE);
+    if (TDeckHAL::isShiftActive()) drawBadge("Aa", 0x001F /* Blue */, TFT_WHITE);
+#endif
 }
 
 static std::vector<std::string> wrapSingleTextLine(const std::string& line, size_t max_chars) {
@@ -1087,13 +1146,26 @@ static std::vector<std::string> wrapTextLines(const std::vector<std::string>& in
 
 static int help_popup_scroll_offset = 0;
 
+static void drawListSelection(int x, int y, int w, int h, uint16_t color) {
+#if defined(CARDULATOR_TDECK_PRO)
+    // On monochrome E-Ink: draw a clean bounding box so text inside is not covered by solid black ink
+    GFX.drawRect(x + 1, y, w - 2, h, TFT_WHITE);
+#else
+    GFX.fillRect(x, y, w, h, color);
+#endif
+}
+
 static void drawHelpPopup() {
     int w = 210;
     int h = 105;
     int x = (SCR_W - w) / 2;
     int y = (SCR_H - h) / 2;
     
+#if defined(CARDULATOR_TDECK_PRO)
+    GFX.fillRect(x, y, w, h, TFT_BLACK);
+#else
     GFX.fillRect(x, y, w, h, 0x18E3 /* dark grey */);
+#endif
     GFX.drawRect(x, y, w, h, TFT_WHITE);
     GFX.drawRect(x + 1, y + 1, w - 2, h - 2, TFT_CYAN);
     
@@ -1138,11 +1210,11 @@ static void drawCalc() {
 
     // 1. Draw scrollable REPL history viewport
     int line_height = 12;
-    int max_history_lines = 7;
-    int y_start = 100;
+    int y_start = INP_DIV2_Y - line_height - 2;
+    int max_history_lines = (y_start - 12) / line_height;
     if (expression.size() > 19) {
-        y_start = 88;
-        max_history_lines = 6;
+        y_start = INP_DIV1_Y - line_height - 2;
+        max_history_lines = (y_start - 12) / line_height;
     }
     
     struct REPLRenderLine {
@@ -1200,9 +1272,9 @@ static void drawCalc() {
 
     // 2. Draw separators and input field at the bottom
     if (expression.size() > 19) {
-        GFX.drawLine(0, 101, SCR_W, 101, TFT_DARKGREY);
+        GFX.drawLine(0, INP_DIV1_Y, SCR_W, INP_DIV1_Y, TFT_DARKGREY);
     } else {
-        GFX.drawLine(0, 114, SCR_W, 114, TFT_DARKGREY);
+        GFX.drawLine(0, INP_DIV2_Y, SCR_W, INP_DIV2_Y, TFT_DARKGREY);
     }
 
     GFX.setTextSize(EXPR_SIZE);
@@ -1210,24 +1282,20 @@ static void drawCalc() {
         GFX.setTextColor(TFT_RED);
         std::string err_disp = resultStr;
         if (err_disp.size() > 19) {
-            GFX.setCursor(2, 105);
+            GFX.setCursor(2, INP_LINE1_Y);
             GFX.print(err_disp.substr(0, 19).c_str());
-            GFX.setCursor(2, 118);
+            GFX.setCursor(2, INP_LINE2_Y);
             GFX.print(err_disp.substr(19).c_str());
         } else {
-            GFX.setCursor(2, 118);
+            GFX.setCursor(2, INP_LINE2_Y);
             GFX.print(err_disp.c_str());
         }
     } else {
-        GFX.setCursor(2, 118);
+        GFX.setCursor(2, INP_LINE2_Y);
         drawHighlightedExpression(expression);
     }
 
-    #ifdef ARDUINO
-    if (canvas_ready) {
-        canvas.pushSprite(0, 0);
-    }
-    #endif
+    flushScreen();
 }
 
 static void drawHelpView() {
@@ -1260,7 +1328,11 @@ static void drawConfirmModal(const char* title, int selected_idx) {
     int popup_h = 52;
     int popup_x = (SCR_W - popup_w) / 2;
     int popup_y = (SCR_H - popup_h) / 2;
+#if defined(CARDULATOR_TDECK_PRO)
+    GFX.fillRect(popup_x, popup_y, popup_w, popup_h, TFT_BLACK);
+#else
     GFX.fillRect(popup_x, popup_y, popup_w, popup_h, 0x18E3 /* dark grey */);
+#endif
     GFX.drawRect(popup_x, popup_y, popup_w, popup_h, TFT_WHITE);
     GFX.drawRect(popup_x + 1, popup_y + 1, popup_w - 2, popup_h - 2, TFT_CYAN);
     
@@ -1270,17 +1342,27 @@ static void drawConfirmModal(const char* title, int selected_idx) {
     GFX.print(title);
 
     if (selected_idx == 0) {
+#if defined(CARDULATOR_TDECK_PRO)
+        GFX.drawRect(popup_x + 33, popup_y + 30, 54, 13, TFT_WHITE);
+        GFX.setTextColor(TFT_WHITE);
+#else
         GFX.setTextColor(TFT_YELLOW, TFT_BLUE);
+#endif
         GFX.setCursor(popup_x + 35, popup_y + 32);
         GFX.print(" [ Yes ] ");
-        GFX.setTextColor(TFT_WHITE, 0x18E3);
+        GFX.setTextColor(TFT_WHITE);
         GFX.setCursor(popup_x + 105, popup_y + 32);
         GFX.print("   No   ");
     } else {
-        GFX.setTextColor(TFT_WHITE, 0x18E3);
+        GFX.setTextColor(TFT_WHITE);
         GFX.setCursor(popup_x + 35, popup_y + 32);
         GFX.print("   Yes  ");
+#if defined(CARDULATOR_TDECK_PRO)
+        GFX.drawRect(popup_x + 103, popup_y + 30, 50, 13, TFT_WHITE);
+        GFX.setTextColor(TFT_WHITE);
+#else
         GFX.setTextColor(TFT_YELLOW, TFT_BLUE);
+#endif
         GFX.setCursor(popup_x + 105, popup_y + 32);
         GFX.print(" [ No ] ");
     }
@@ -1318,7 +1400,7 @@ static void drawVars() {
                 val = user_args[u_idx].val;
             }
             if (i == var_selected_idx) {
-                GFX.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
+                drawListSelection(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
                 GFX.setTextColor(TFT_WHITE);
             } else {
                 GFX.setTextColor(TFT_WHITE);
@@ -1380,7 +1462,7 @@ static void drawConsts() {
         }
         for (int i = start; i < (int)user_consts.size() && i < start + max_vis; ++i) {
             if (i == const_selected_idx) {
-                GFX.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
+                drawListSelection(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
                 GFX.setTextColor(TFT_WHITE);
             } else {
                 GFX.setTextColor(TFT_WHITE);
@@ -1442,7 +1524,7 @@ static void drawBinds() {
         }
         for (int i = start; i < (int)user_binds.size() && i < start + max_vis; ++i) {
             if (i == bind_selected_idx) {
-                GFX.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
+                drawListSelection(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
                 GFX.setTextColor(TFT_WHITE);
             } else {
                 GFX.setTextColor(TFT_WHITE);
@@ -1533,7 +1615,7 @@ static void drawFormulas() {
         for (int i = 0; i < p_count; ++i) {
             int y = y_start + i * 14;
             if (i == formula_wizard_param_idx) {
-                GFX.fillRect(0, y - 1, SCR_W, 13, 0x0015 /* dark blue */);
+                drawListSelection(0, y - 1, SCR_W, 13, 0x0015 /* dark blue */);
                 GFX.setTextColor(TFT_YELLOW);
                 GFX.setCursor(5, y);
                 GFX.print("-> ");
@@ -1558,7 +1640,11 @@ static void drawFormulas() {
             int card_h = 24;
             int card_w = SCR_W - 8;
             int card_x = 4;
+#if defined(CARDULATOR_TDECK_PRO)
+            GFX.fillRect(card_x, card_y, card_w, card_h, TFT_BLACK);
+#else
             GFX.fillRect(card_x, card_y, card_w, card_h, 0x10A2 /* dark navy/grey */);
+#endif
             GFX.drawRect(card_x, card_y, card_w, card_h, TFT_CYAN);
             
             GFX.setCursor(card_x + 6, card_y + 7);
@@ -1592,7 +1678,7 @@ static void drawFormulas() {
         for (int i = start; i < (int)user_formulas.size() && i < start + max_vis; ++i) {
             int line_y = y + (i - start) * 14;
             if (i == formula_selected_idx) {
-                GFX.fillRect(0, line_y - 1, SCR_W, 13, TFT_BLUE);
+                drawListSelection(0, line_y - 1, SCR_W, 13, TFT_BLUE);
                 GFX.setTextColor(TFT_YELLOW);
             } else {
                 GFX.setTextColor(TFT_WHITE);
@@ -1756,7 +1842,7 @@ static void drawPlot() {
                 }
             }
         }
-        canvas.pushSprite(0, 0);
+        flushScreen();
         return;
     }
     #endif
@@ -2022,7 +2108,7 @@ static void drawScripts() {
             }
             for (int i = start; i < (int)user_scripts.size() && i < start + visible_items; ++i) {
                 if (i == script_selected_idx) {
-                    GFX.fillRect(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
+                    drawListSelection(0, y + (i - start) * 14 - 1, SCR_W, 13, TFT_BLUE);
                     GFX.setTextColor(TFT_WHITE);
                 } else {
                     GFX.setTextColor(TFT_WHITE);
@@ -2037,7 +2123,11 @@ static void drawScripts() {
             int popup_x = (SCR_W - popup_w) / 2;
             int popup_y = (SCR_H - popup_h) / 2;
             
+#if defined(CARDULATOR_TDECK_PRO)
+            GFX.fillRect(popup_x, popup_y, popup_w, popup_h, TFT_BLACK);
+#else
             GFX.fillRect(popup_x, popup_y, popup_w, popup_h, 0x18E3 /* dark grey */);
+#endif
             GFX.drawRect(popup_x, popup_y, popup_w, popup_h, TFT_CYAN);
             
             GFX.setTextSize(1);
@@ -2300,12 +2390,10 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
         return;
     }
 
-    // 5. Arrow key shortcuts (Left/Right, Ctrl/Alt combinations)
+    // 5. Arrow key shortcuts (Left/Right, Ctrl combinations)
     if (s.left) {
         if (s.ctrl) {
             cursor_pos = getPrevWordPos(expression, cursor_pos);
-        } else if (s.alt || s.opt) {
-            cursor_pos = 0;
         } else {
             if (cursor_pos > 0) cursor_pos--;
         }
@@ -2315,8 +2403,6 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
     if (s.right) {
         if (s.ctrl) {
             cursor_pos = getNextWordPos(expression, cursor_pos);
-        } else if (s.alt || s.opt) {
-            cursor_pos = expression.size();
         } else {
             if (cursor_pos < (int)expression.size()) cursor_pos++;
         }
@@ -4298,12 +4384,21 @@ static void drawParams() {
         return orig_y - param_scroll_y;
     };
 
+    auto drawSelection = [&](int y, int h) {
+#if defined(CARDULATOR_TDECK_PRO)
+        // On monochrome E-Ink: draw a clean bounding box around the selected setting
+        GFX.drawRect(2, y - 1, SCR_W - 4, h, TFT_WHITE);
+#else
+        GFX.fillRect(0, y - 1, SCR_W, h, 0x18E3 /* dark grey */);
+#endif
+    };
+
     // Setting 0: Screen Timeout
     int y0 = getY(16);
     if (y0 >= 14 && y0 < SCR_H) {
         if (param_selected_idx == 0) {
             GFX.setTextColor(TFT_YELLOW);
-            GFX.fillRect(0, y0 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            drawSelection(y0, 14);
         } else {
             GFX.setTextColor(TFT_WHITE);
         }
@@ -4321,12 +4416,16 @@ static void drawParams() {
     if (y1 >= 14 && y1 < SCR_H) {
         if (param_selected_idx == 1) {
             GFX.setTextColor(TFT_YELLOW);
-            GFX.fillRect(0, y1 - 1, SCR_W, 25, 0x18E3 /* dark grey */);
+            drawSelection(y1, 25);
         } else {
             GFX.setTextColor(TFT_WHITE);
         }
         GFX.setCursor(10, y1);
+#if defined(CARDULATOR_TDECK_PRO)
+        GFX.printf("Light / Backlight: %d", backlight_brightness);
+#else
         GFX.printf("Brightness: %d", backlight_brightness);
+#endif
         if (param_selected_idx == 1 && param_edit_mode) {
             GFX.setTextColor(TFT_CYAN);
             GFX.setCursor(160, y1);
@@ -4342,7 +4441,7 @@ static void drawParams() {
     if (y2 >= 14 && y2 < SCR_H) {
         if (param_selected_idx == 2) {
             GFX.setTextColor(TFT_YELLOW);
-            GFX.fillRect(0, y2 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            drawSelection(y2, 14);
         } else {
             GFX.setTextColor(TFT_WHITE);
         }
@@ -4355,7 +4454,7 @@ static void drawParams() {
     if (y3 >= 14 && y3 < SCR_H) {
         if (param_selected_idx == 3) {
             GFX.setTextColor(TFT_YELLOW);
-            GFX.fillRect(0, y3 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            drawSelection(y3, 14);
         } else {
             GFX.setTextColor(TFT_WHITE);
         }
@@ -4373,7 +4472,7 @@ static void drawParams() {
     if (y4 >= 14 && y4 < SCR_H) {
         if (param_selected_idx == 4) {
             GFX.setTextColor(TFT_YELLOW);
-            GFX.fillRect(0, y4 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            drawSelection(y4, 14);
         } else {
             GFX.setTextColor(TFT_WHITE);
         }
@@ -4386,7 +4485,7 @@ static void drawParams() {
     if (y5 >= 14 && y5 < SCR_H) {
         if (param_selected_idx == 5) {
             GFX.setTextColor(TFT_YELLOW);
-            GFX.fillRect(0, y5 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            drawSelection(y5, 14);
         } else {
             GFX.setTextColor(TFT_WHITE);
         }
@@ -4399,7 +4498,7 @@ static void drawParams() {
     if (y6 >= 14 && y6 < SCR_H) {
         if (param_selected_idx == 6) {
             GFX.setTextColor(TFT_YELLOW);
-            GFX.fillRect(0, y6 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            drawSelection(y6, 14);
         } else {
             GFX.setTextColor(TFT_WHITE);
         }
@@ -4412,7 +4511,7 @@ static void drawParams() {
     if (y7 >= 14 && y7 < SCR_H) {
         if (param_selected_idx == 7) {
             GFX.setTextColor(TFT_YELLOW);
-            GFX.fillRect(0, y7 - 1, SCR_W, 14, 0x18E3 /* dark grey */);
+            drawSelection(y7, 14);
         } else {
             GFX.setTextColor(TFT_WHITE);
         }
@@ -4431,7 +4530,11 @@ static void handleParamsKey(Keyboard_Class::KeysState& s) {
                 } else if (param_selected_idx == 1) {
                     if (val >= 0 && val <= 255) {
                         backlight_brightness = val;
+#if defined(CARDULATOR_TDECK_PRO)
+                        TDeckHAL::setBrightness(backlight_brightness);
+#else
                         M5Cardputer.Display.setBrightness(backlight_brightness);
+#endif
                     }
                 } else if (param_selected_idx == 3) {
                     if (val >= 0 && val <= 12) {
@@ -4468,7 +4571,11 @@ static void handleParamsKey(Keyboard_Class::KeysState& s) {
         } else if (param_selected_idx == 1) {
             if (s.left) backlight_brightness = std::max(0, backlight_brightness - 15);
             else backlight_brightness = std::min(255, backlight_brightness + 15);
+#if defined(CARDULATOR_TDECK_PRO)
+            TDeckHAL::setBrightness(backlight_brightness);
+#else
             M5Cardputer.Display.setBrightness(backlight_brightness);
+#endif
         } else if (param_selected_idx == 2) {
             if (s.left) fmt_mode = (fmt_mode + 4) % 5;
             else fmt_mode = (fmt_mode + 1) % 5;
@@ -5043,6 +5150,9 @@ void setup() {
     pinMode(4, OUTPUT);
     // blinkLED(1); // Stage 1: entered setup
     
+#if defined(CARDULATOR_TDECK_PRO)
+    TDeckHAL::init();
+#else
     auto cfg = M5.config();
     // Do not initialize keyboard automatically to prevent hanging on standard Cardputer
     M5Cardputer.begin(cfg, false);
@@ -5067,6 +5177,7 @@ void setup() {
     } else {
         M5Cardputer.Keyboard.begin(std::make_unique<IOMatrixKeyboardReader>());
     }
+#endif
     
     // blinkLED(4); // Stage 4: Keyboard reader initialized
     
@@ -5125,6 +5236,16 @@ void setup() {
         // blinkLED(6); // Stage 6: NVS data loaded
     }
     
+#if defined(CARDULATOR_TDECK_PRO)
+    TDeckHAL::setBrightness(backlight_brightness);
+    last_activity_time = millis();
+    screen_is_on = true;
+    canvas.createSprite(SCR_W, SCR_H);
+    canvas_ready = true;
+    canvas.fillScreen(TFT_BLACK);
+    drawCalc();
+    flushScreen(true);
+#else
     M5Cardputer.Display.setBrightness(backlight_brightness);
     last_activity_time = millis();
     screen_is_on = true;
@@ -5268,6 +5389,7 @@ void setup() {
         delay(200);
     }
     drawCalc();
+#endif
 }
 
 static void processKeyEvent(Keyboard_Class::KeysState s) {
@@ -5276,6 +5398,7 @@ static void processKeyEvent(Keyboard_Class::KeysState s) {
         bool handled = false;
         for (char c : s.word) {
             switch (c) {
+                case 'q': case 'Q': resetAppState(STATE_CALC); handled = true; break;
                 case 'v': case 'V': resetAppState(STATE_VARS); handled = true; break;
                 case 's': case 'S': resetAppState(STATE_SCRIPTS); handled = true; break;
                 case 'g': case 'G': resetAppState(STATE_PLOT); handled = true; break;
@@ -5299,9 +5422,7 @@ static void processKeyEvent(Keyboard_Class::KeysState s) {
                 case STATE_PARAMS: drawParams(); break;
                 case STATE_CONSTS: drawConsts(); break;
             }
-            #ifdef ARDUINO
-            if (canvas_ready) canvas.pushSprite(0, 0);
-            #endif
+            flushScreen();
             GFX.endWrite();
             return;
         }
@@ -5389,11 +5510,7 @@ static void processKeyEvent(Keyboard_Class::KeysState s) {
             drawConsts();
             break;
     }
-    #ifdef ARDUINO
-    if (canvas_ready) {
-        canvas.pushSprite(0, 0);
-    }
-    #endif
+    flushScreen();
     GFX.endWrite();
 }
 
@@ -5410,6 +5527,7 @@ void loop() {
     if (now - last_key_poll < 5) return;
     last_key_poll = now;
 
+#if !defined(CARDULATOR_TDECK_PRO)
     if (screen_off_timeout > 0 && screen_is_on && (now - last_activity_time > (uint32_t)screen_off_timeout * 1000)) {
         M5Cardputer.Display.setBrightness(0);
         screen_is_on = false;
@@ -5421,6 +5539,7 @@ void loop() {
     M5.update();
     M5Cardputer.Keyboard.updateKeyList();
     M5Cardputer.Keyboard.updateKeysState();
+#endif
     
     #if defined(ARDUINO)
     if (Serial.available()) {
@@ -5480,6 +5599,75 @@ void loop() {
     }
     #endif
 
+#if defined(CARDULATOR_TDECK_PRO)
+    Keyboard_Class::KeysState s;
+    if (TDeckHAL::pollKeyboard(s)) {
+        last_activity_time = now;
+        
+        // Scroll or dismiss Help Popup overlay
+        if (show_help_popup) {
+            bool is_backtick = (std::find(s.word.begin(), s.word.end(), '`') != s.word.end()) || 
+                               (std::find(s.word.begin(), s.word.end(), '~') != s.word.end());
+            if (s.esc || is_backtick) {
+                show_help_popup = false;
+                help_popup_scroll_offset = 0;
+                switch (appState) {
+                    case STATE_CALC: drawCalc(); break;
+                    case STATE_HELP: drawHelpView(); break;
+                    case STATE_VARS: drawVars(); break;
+                    case STATE_SCRIPTS: drawScripts(); break;
+                    case STATE_PLOT: drawPlot(); break;
+                    case STATE_BINDS: drawBinds(); break;
+                    case STATE_FORMULAS: drawFormulas(); break;
+                    case STATE_PARAMS: drawParams(); break;
+                    case STATE_CONSTS: drawConsts(); break;
+                }
+                flushScreen();
+                return;
+            }
+            
+            bool page_up = s.up || (std::find(s.word.begin(), s.word.end(), ';') != s.word.end());
+            bool page_down = s.down || (std::find(s.word.begin(), s.word.end(), '.') != s.word.end());
+            
+            if (page_up) {
+                if (help_popup_scroll_offset > 0) help_popup_scroll_offset--;
+                drawHelpPopup();
+                flushScreen();
+                return;
+            }
+            if (page_down) {
+                help_popup_scroll_offset++;
+                drawHelpPopup();
+                flushScreen();
+                return;
+            }
+            
+            drawHelpPopup();
+            flushScreen();
+            return;
+        }
+
+        bool has_action_key = !s.word.empty() || s.enter || s.esc || s.left || s.right || s.up || s.down || s.backspace || s.tab;
+        if (has_action_key) {
+            processKeyEvent(s);
+        } else {
+            // Modifier change (Shift, Sym, Alt) toggled: redraw view to update status bar badges immediately
+            switch (appState) {
+                case STATE_CALC: drawCalc(); break;
+                case STATE_HELP: drawHelpView(); break;
+                case STATE_VARS: drawVars(); break;
+                case STATE_SCRIPTS: drawScripts(); break;
+                case STATE_PLOT: drawPlot(); break;
+                case STATE_BINDS: drawBinds(); break;
+                case STATE_FORMULAS: drawFormulas(); break;
+                case STATE_PARAMS: drawParams(); break;
+                case STATE_CONSTS: drawConsts(); break;
+            }
+            flushScreen();
+        }
+    }
+    delay(5);
+#else
     // G0 button always returns to REPL (or clears screen/history if already in REPL)
     if (M5.BtnA.wasPressed()) {
         if (!screen_is_on) {
@@ -5669,4 +5857,5 @@ void loop() {
     }
     
     delay(5);
+#endif
 }

@@ -801,6 +801,28 @@ void test_units_conversion(void) {
     ConvResult c_eia_d = handleConv(0, "01D", "ohm", dat_path);
     TEST_ASSERT_TRUE(c_eia_d.success);
     TEST_ASSERT_DOUBLE_WITHIN(1e-3, 100000.0, c_eia_d.value);
+
+    // 8. Offline physical units conversion (no units.dat path)
+    ConvResult c_off1 = handleConv(2, "inch", "mm", "");
+    TEST_ASSERT_TRUE(c_off1.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 50.8, c_off1.value);
+    TEST_ASSERT_EQUAL_STRING("mm", c_off1.unitStr.c_str());
+
+    ConvResult c_off2 = handleConv(10, "m", "cm", "");
+    TEST_ASSERT_TRUE(c_off2.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 1000.0, c_off2.value);
+
+    ConvResult c_off3 = handleConv(1, "kg", "lb", "");
+    TEST_ASSERT_TRUE(c_off3.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 2.20462, c_off3.value);
+
+    ConvResult c_off4 = handleConv(100, "degC", "degF", "");
+    TEST_ASSERT_TRUE(c_off4.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 212.0, c_off4.value);
+
+    ConvResult c_off5 = handleConv(1, "atm", "mmHg", "");
+    TEST_ASSERT_TRUE(c_off5.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 760.0, c_off5.value);
 }
 
 void test_num_formatting(void) {
