@@ -39,28 +39,42 @@ jobs:
       run: |
         pio test -e native
 
-    - name: Build Cardulator Firmware
+    - name: Build Firmware (Cardputer & T-Deck Pro)
       run: |
         pio run -e cardputer
+        pio run -e tdeck-pro
 
-    - name: Prepare Merged Binary Artifact
+    - name: Prepare Merged Binary Artifacts
       id: prep
       run: |
         VERSION=$(git describe --tags --always || echo "v1.0.0")
-        BIN_NAME="cardulator-${VERSION}.bin"
-        
-        FW_PATH=$(find .pio/build/cardputer/ -name "*.bin" ! -name "bootloader.bin" ! -name "partitions.bin" | head -n 1)
-        esptool.py --chip esp32s3 merge_bin -o cardulator.bin 0x0 .pio/build/cardputer/bootloader.bin 0x8000 .pio/build/cardputer/partitions.bin 0x10000 "$FW_PATH"
-        cp "cardulator.bin" "${BIN_NAME}"
-        echo "bin_name=${BIN_NAME}" >> $GITHUB_OUTPUT
+
+        # 1. Cardputer
+        CARD_FW=$(find .pio/build/cardputer/ -name "*.bin" ! -name "bootloader.bin" ! -name "partitions.bin" | head -n 1)
+        CARD_BIN="cardulator-cardputer-${VERSION}.bin"
+        esptool.py --chip esp32s3 merge_bin -o "cardulator-cardputer.bin" 0x0 .pio/build/cardputer/bootloader.bin 0x8000 .pio/build/cardputer/partitions.bin 0x10000 "$CARD_FW"
+        cp "cardulator-cardputer.bin" "${CARD_BIN}"
+        cp "cardulator-cardputer.bin" "cardulator.bin"
+
+        # 2. T-Deck Pro
+        TDECK_FW=$(find .pio/build/tdeck-pro/ -name "*.bin" ! -name "bootloader.bin" ! -name "partitions.bin" | head -n 1)
+        TDECK_BIN="cardulator-tdeck-pro-${VERSION}.bin"
+        esptool.py --chip esp32s3 merge_bin -o "cardulator-tdeck-pro.bin" 0x0 .pio/build/tdeck-pro/bootloader.bin 0x8000 .pio/build/tdeck-pro/partitions.bin 0x10000 "$TDECK_FW"
+        cp "cardulator-tdeck-pro.bin" "${TDECK_BIN}"
+
+        echo "card_bin=${CARD_BIN}" >> $GITHUB_OUTPUT
+        echo "tdeck_bin=${TDECK_BIN}" >> $GITHUB_OUTPUT
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-    - name: Upload firmware artifact
+    - name: Upload firmware artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ steps.prep.outputs.bin_name }}
+        name: cardulator-firmware-${{ steps.prep.outputs.version }}
         path: |
-          ${{ steps.prep.outputs.bin_name }}
+          ${{ steps.prep.outputs.card_bin }}
+          ${{ steps.prep.outputs.tdeck_bin }}
+          cardulator-cardputer.bin
+          cardulator-tdeck-pro.bin
           cardulator.bin
 
     - name: Create GitHub Release
@@ -68,8 +82,11 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: |
+          ${{ steps.prep.outputs.card_bin }}
+          ${{ steps.prep.outputs.tdeck_bin }}
+          cardulator-cardputer.bin
+          cardulator-tdeck-pro.bin
           cardulator.bin
-          ${{ steps.prep.outputs.bin_name }}
         generate_release_notes: true
 
     - name: Publish to M5Burner

@@ -1,6 +1,6 @@
 # Cardulator — Scientific REPL Calculator & Scripting Engine for M5Stack Cardputer
 
-[Russian / Русский](README_RU.md)
+[Russian / Русский](README_RU.md) | [LilyGO T-Deck Pro Guide](README_TDECK_PRO.md)
 
 ![logo](logo.png)
 ![photo](photo.png)

@@ -10,3 +10,10 @@
 .idea/
 *.swp
 *.tmp
+
+# Third-party references
+T-Deck/
+T-Deck-Pro/
+
+# Local binary builds
+*.bin

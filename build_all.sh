@@ -11,21 +11,35 @@ CLEAN=false
 FLASH=false
 TEST=false
 DEBUG=false
+MERGE=false
+PLATFORM="cardputer"
 
 # Help function
 show_help() {
     echo "Usage: ./build_all.sh [options]"
     echo "Options:"
-    echo "  -c, --clean    Clean build directories"
-    echo "  -f, --flash    Build and flash to M5Cardputer (Cardulator)"
-    echo "  -t, --test     Run native tests"
-    echo "  -d, --debug    Enable USB CDC Serial debugging"
-    echo "  -h, --help     Show this help message"
+    echo "  -p, --platform <name> Target platform: 'cardputer', 'tdeck-pro', or 'all' (default: cardputer)"
+    echo "  -m, --merge           Merge binaries into single flashable cardulator-<platform>.bin"
+    echo "  -c, --clean           Clean build directories"
+    echo "  -f, --flash           Build and flash to device"
+    echo "  -t, --test            Run native tests"
+    echo "  -d, --debug           Enable USB CDC Serial debugging"
+    echo "  -h, --help            Show this help message"
 }
 
 # Parse options
 while [[ "$#" -gt 0 ]]; do
     case $1 in
+        -p|--platform)
+            if [[ -n "$2" && "$2" != -* ]]; then
+                PLATFORM="$2"
+                shift
+            else
+                echo -e "${RED}Error: --platform requires an argument ('cardputer', 'tdeck-pro', 'all')${NC}"
+                exit 1
+            fi
+            ;;
+        -m|--merge) MERGE=true ;;
         -c|--clean) CLEAN=true ;;
         -f|--flash) FLASH=true ;;
         -t|--test) TEST=true ;;
@@ -35,6 +49,23 @@ while [[ "$#" -gt 0 ]]; do
     esac
     shift
 done
+
+# Normalize platform name
+case "$PLATFORM" in
+    cardputer|m5cardputer)
+        ENVS=("cardputer")
+        ;;
+    tdeck-pro|tdeck|t-deck-pro|t-deck)
+        ENVS=("tdeck-pro")
+        ;;
+    all)
+        ENVS=("cardputer" "tdeck-pro")
+        ;;
+    *)
+        echo -e "${RED}Error: Unknown platform '$PLATFORM'. Valid choices: 'cardputer', 'tdeck-pro', 'all'${NC}"
+        exit 1
+        ;;
+esac
 
 if [ "$DEBUG" = true ]; then
     export PLATFORMIO_BUILD_FLAGS="-DCDC_DEBUG"
@@ -67,18 +98,42 @@ if [ "$TEST" = true ]; then
     fi
 fi
 
-# Build or Flash
-if [ "$FLASH" = true ]; then
-    echo -e "${YELLOW}=== Building and Flashing Cardulator Firmware ===${NC}"
-    $PIO_CMD run -e cardputer --target upload
-else
-    echo -e "${YELLOW}=== Building Cardulator Firmware ===${NC}"
-    $PIO_CMD run -e cardputer
-fi
+# Build or Flash each target environment
+for env in "${ENVS[@]}"; do
+    if [ "$FLASH" = true ]; then
+        echo -e "${YELLOW}=== Building and Flashing [$env] Firmware ===${NC}"
+        $PIO_CMD run -e "$env" --target upload
+    else
+        echo -e "${YELLOW}=== Building [$env] Firmware ===${NC}"
+        $PIO_CMD run -e "$env"
+    fi
 
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}=== Build Successful! ===${NC}"
-else
-    echo -e "${RED}=== Build Failed! ===${NC}"
-    exit 1
-fi
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}=== Build Failed for [$env]! ===${NC}"
+        exit 1
+    fi
+
+    if [ "$MERGE" = true ]; then
+        echo -e "${YELLOW}=== Merging [$env] Binary ===${NC}"
+        FW_PATH=$(find ".pio/build/${env}/" -name "*.bin" ! -name "bootloader.bin" ! -name "partitions.bin" | head -n 1)
+        OUT_BIN="cardulator-${env}.bin"
+        if command -v esptool.py &> /dev/null; then
+            ESPTOOL_CMD="esptool.py"
+        elif [ -f "$HOME/.platformio/penv/bin/esptool.py" ]; then
+            ESPTOOL_CMD="$HOME/.platformio/penv/bin/esptool.py"
+        elif [ -f "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" ]; then
+            ESPTOOL_CMD="python3 $HOME/.platformio/packages/tool-esptoolpy/esptool.py"
+        else
+            ESPTOOL_CMD=""
+        fi
+
+        if [ -n "$ESPTOOL_CMD" ] && [ -f ".pio/build/${env}/bootloader.bin" ] && [ -f ".pio/build/${env}/partitions.bin" ] && [ -f "$FW_PATH" ]; then
+            $ESPTOOL_CMD --chip esp32s3 merge_bin -o "$OUT_BIN" 0x0 ".pio/build/${env}/bootloader.bin" 0x8000 ".pio/build/${env}/partitions.bin" 0x10000 "$FW_PATH"
+            echo -e "${GREEN}Merged binary created: ${OUT_BIN}${NC}"
+        else
+            echo -e "${RED}Warning: Unable to merge binary. Ensure esptool.py is available and build outputs exist.${NC}"
+        fi
+    fi
+done
+
+echo -e "${GREEN}=== All Builds Completed Successfully! ===${NC}"
