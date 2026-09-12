@@ -16,6 +16,112 @@
 #pragma clang diagnostic pop
 
 #include "units_bridge.h"
+#include "embedded_units_dat.h"
+
+#if defined(ESP_PLATFORM)
+#include "esp_vfs.h"
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/stat.h>
+
+static size_t s_units_vfs_pos = 0;
+static int s_units_vfs_open = 0;
+
+static int units_vfs_open(const char *path, int flags, int mode)
+{
+    (void)path; (void)mode;
+    if (flags & (O_WRONLY | O_RDWR | O_CREAT | O_TRUNC)) {
+        errno = EROFS;
+        return -1;
+    }
+    s_units_vfs_pos = 0;
+    s_units_vfs_open = 1;
+    return 10;
+}
+
+static ssize_t units_vfs_read(int fd, void *dst, size_t size)
+{
+    (void)fd;
+    if (!s_units_vfs_open) {
+        errno = EBADF;
+        return -1;
+    }
+    if (s_units_vfs_pos >= embedded_units_dat_len) {
+        return 0;
+    }
+    size_t to_read = size;
+    if (s_units_vfs_pos + to_read > embedded_units_dat_len) {
+        to_read = embedded_units_dat_len - s_units_vfs_pos;
+    }
+    memcpy(dst, embedded_units_dat + s_units_vfs_pos, to_read);
+    s_units_vfs_pos += to_read;
+    return (ssize_t)to_read;
+}
+
+static off_t units_vfs_lseek(int fd, off_t offset, int mode)
+{
+    (void)fd;
+    if (!s_units_vfs_open) {
+        errno = EBADF;
+        return -1;
+    }
+    off_t new_pos = (off_t)s_units_vfs_pos;
+    if (mode == SEEK_SET) {
+        new_pos = offset;
+    } else if (mode == SEEK_CUR) {
+        new_pos += offset;
+    } else if (mode == SEEK_END) {
+        new_pos = (off_t)embedded_units_dat_len + offset;
+    } else {
+        errno = EINVAL;
+        return -1;
+    }
+    if (new_pos < 0 || new_pos > (off_t)embedded_units_dat_len) {
+        errno = EINVAL;
+        return -1;
+    }
+    s_units_vfs_pos = (size_t)new_pos;
+    return new_pos;
+}
+
+static int units_vfs_close(int fd)
+{
+    (void)fd;
+    s_units_vfs_open = 0;
+    return 0;
+}
+
+static int units_vfs_fstat(int fd, struct stat *st)
+{
+    (void)fd;
+    if (!s_units_vfs_open) {
+        errno = EBADF;
+        return -1;
+    }
+    memset(st, 0, sizeof(*st));
+    st->st_mode = S_IFREG | 0444;
+    st->st_size = embedded_units_dat_len;
+    return 0;
+}
+
+static void register_units_vfs(void)
+{
+    static int s_vfs_registered = 0;
+    if (s_vfs_registered) return;
+
+    esp_vfs_t vfs = {
+        .flags = ESP_VFS_FLAG_DEFAULT,
+        .write = NULL,
+        .lseek = &units_vfs_lseek,
+        .read = &units_vfs_read,
+        .open = &units_vfs_open,
+        .close = &units_vfs_close,
+        .fstat = &units_vfs_fstat,
+    };
+    esp_vfs_register("/vfs_units", &vfs, NULL);
+    s_vfs_registered = 1;
+}
+#endif
 
 /* Functions defined in units.c but not declared in units.h. */
 extern int   completereduce(struct unittype *unit);
@@ -38,14 +144,61 @@ int bridge_init(const char *units_dat_path)
         if (!mylocale) mylocale = "en_US";
     }
 
-    int ucount = 0, pcount = 0, fcount = 0;
-    int err;
-    if (units_dat_path) {
-        err = readunits((char *)units_dat_path, stderr, &ucount, &pcount, &fcount, 0);
-    } else {
-        char *path = findunitsfile();
-        err = readunits(path, stderr, &ucount, &pcount, &fcount, 0);
+    const char *path_to_use = units_dat_path;
+
+#if defined(ESP_PLATFORM)
+    // Check if user has units.dat on the SD card
+    if (!path_to_use || !*path_to_use) {
+        const char *sd_paths[] = {
+            "/sd/Cardulator/units.dat",
+            "/sd/units.dat",
+            NULL
+        };
+        for (int i = 0; sd_paths[i]; ++i) {
+            FILE *f = fopen(sd_paths[i], "rt");
+            if (f) {
+                fclose(f);
+                path_to_use = sd_paths[i];
+                break;
+            }
+        }
     }
+    // Fallback to embedded VFS
+    if (!path_to_use || !*path_to_use) {
+        register_units_vfs();
+        path_to_use = "/vfs_units/units.dat";
+    }
+#else
+    // Native (desktop / tests)
+    if (!path_to_use || !*path_to_use) {
+        const char *candidates[] = {
+            "lib/gnu-units/units.dat",
+            "../lib/gnu-units/units.dat",
+            "../../lib/gnu-units/units.dat",
+            NULL
+        };
+        for (int i = 0; candidates[i]; ++i) {
+            FILE *f = fopen(candidates[i], "rt");
+            if (f) {
+                fclose(f);
+                path_to_use = candidates[i];
+                break;
+            }
+        }
+    }
+    if (!path_to_use || !*path_to_use) {
+        static char temp_path[256] = "/tmp/cardulator_units.dat";
+        FILE *tf = fopen(temp_path, "wb");
+        if (tf) {
+            fwrite(embedded_units_dat, 1, embedded_units_dat_len, tf);
+            fclose(tf);
+            path_to_use = temp_path;
+        }
+    }
+#endif
+
+    int ucount = 0, pcount = 0, fcount = 0;
+    int err = readunits((char *)path_to_use, stderr, &ucount, &pcount, &fcount, 0);
 
     if (err == 0 || err == E_UNKNOWNUNIT) {
         g_initialized = 1;

@@ -823,6 +823,24 @@ void test_units_conversion(void) {
     ConvResult c_off5 = handleConv(1, "atm", "mmHg", "");
     TEST_ASSERT_TRUE(c_off5.success);
     TEST_ASSERT_DOUBLE_WITHIN(1e-3, 760.0, c_off5.value);
+
+    // 9. GNU Units conversions without explicit path (testing embedded units.dat fallback)
+    ConvResult c_gnu1 = handleConv(10, "m/s", "km/hr", "");
+    TEST_ASSERT_TRUE(c_gnu1.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 36.0, c_gnu1.value);
+    TEST_ASSERT_EQUAL_STRING("km/hr", c_gnu1.unitStr.c_str());
+
+    ConvResult c_gnu2 = handleConv(1, "hp", "W", "");
+    TEST_ASSERT_TRUE(c_gnu2.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1.0, 745.7, c_gnu2.value);
+
+    ConvResult c_gnu3 = handleConv(10, "furlong", "yard", "");
+    TEST_ASSERT_TRUE(c_gnu3.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 2200.0, c_gnu3.value);
+
+    ConvResult c_gnu4 = handleConv(1, "acre", "m^2", "");
+    TEST_ASSERT_TRUE(c_gnu4.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1.0, 4046.86, c_gnu4.value);
 }
 
 void test_num_formatting(void) {
