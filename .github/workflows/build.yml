@@ -52,15 +52,14 @@ jobs:
         # 1. Cardputer
         CARD_FW=$(find .pio/build/cardputer/ -name "*.bin" ! -name "bootloader.bin" ! -name "partitions.bin" | head -n 1)
         CARD_BIN="cardulator-cardputer-${VERSION}.bin"
-        esptool.py --chip esp32s3 merge_bin -o "cardulator-cardputer.bin" 0x0 .pio/build/cardputer/bootloader.bin 0x8000 .pio/build/cardputer/partitions.bin 0x10000 "$CARD_FW"
-        cp "cardulator-cardputer.bin" "${CARD_BIN}"
-        cp "cardulator-cardputer.bin" "cardulator.bin"
+        esptool.py --chip esp32s3 merge_bin -o "${CARD_BIN}" 0x0 .pio/build/cardputer/bootloader.bin 0x8000 .pio/build/cardputer/partitions.bin 0x10000 "$CARD_FW"
+        # Keep local cardulator.bin copy for M5Burner upload script
+        cp "${CARD_BIN}" "cardulator.bin"
 
         # 2. T-Deck Pro
         TDECK_FW=$(find .pio/build/tdeck-pro/ -name "*.bin" ! -name "bootloader.bin" ! -name "partitions.bin" | head -n 1)
         TDECK_BIN="cardulator-tdeck-pro-${VERSION}.bin"
-        esptool.py --chip esp32s3 merge_bin -o "cardulator-tdeck-pro.bin" 0x0 .pio/build/tdeck-pro/bootloader.bin 0x8000 .pio/build/tdeck-pro/partitions.bin 0x10000 "$TDECK_FW"
-        cp "cardulator-tdeck-pro.bin" "${TDECK_BIN}"
+        esptool.py --chip esp32s3 merge_bin -o "${TDECK_BIN}" 0x0 .pio/build/tdeck-pro/bootloader.bin 0x8000 .pio/build/tdeck-pro/partitions.bin 0x10000 "$TDECK_FW"
 
         echo "card_bin=${CARD_BIN}" >> $GITHUB_OUTPUT
         echo "tdeck_bin=${TDECK_BIN}" >> $GITHUB_OUTPUT
@@ -73,9 +72,6 @@ jobs:
         path: |
           ${{ steps.prep.outputs.card_bin }}
           ${{ steps.prep.outputs.tdeck_bin }}
-          cardulator-cardputer.bin
-          cardulator-tdeck-pro.bin
-          cardulator.bin
 
     - name: Create GitHub Release
       if: startsWith(github.ref, 'refs/tags/v')
@@ -84,9 +80,6 @@ jobs:
         files: |
           ${{ steps.prep.outputs.card_bin }}
           ${{ steps.prep.outputs.tdeck_bin }}
-          cardulator-cardputer.bin
-          cardulator-tdeck-pro.bin
-          cardulator.bin
         generate_release_notes: true
 
     - name: Publish to M5Burner
