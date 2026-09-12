@@ -1,5 +1,7 @@
 # Cardulator for LilyGO T-Deck Pro
 
+[Russian / Русский](README_TDECK_PRO_RU.md) | [Main README](README.md)
+
 This document describes the port of **Cardulator** for the **LilyGO T-Deck Pro** (ESP32-S3 with 3.1" E-Ink display and physical 35-key matrix keyboard).
 
 ---
@@ -30,6 +32,7 @@ The T-Deck Pro features a 4-row physical matrix keyboard driven by the **TCA8418
 - **`Alt` (Row 2, Col 0)**: Acts as the **`Fn`** modifier from M5Stack Cardputer. Used for menu mode switching, navigation, and editing shortcuts.
 - **`Sym` (Row 3, Col 8)**: Toggles / latches the **Symbol & Numbers layer** (`0–9`, math symbols, punctuation).
 - **`Shift` (Left `r3c5`, Right `r3c9`)**: Toggles uppercase / special symbol overrides.
+- **WASD Navigation**: In all screens without text input fields (variables, constants, params, scripts, formulas), the **`w`**, **`a`**, **`s`**, **`d`** keys navigate Up/Left/Down/Right both with and without `Alt`.
 
 ---
 
@@ -53,7 +56,7 @@ The T-Deck Pro features a 4-row physical matrix keyboard driven by the **TCA8418
 | Key | Base | `Sym` | `Shift + Sym` | `Alt` (Fn) |
 |:---:|:---:|:---:|:---:|:---:|
 | **`a`** | `a` | **`*`** (Multiply) | — | **Left** |
-| **`s`** | `s` | **`4`** | — | Scripts Manager (`STATE_SCRIPTS`) / **Down** |
+| **`s`** | `s` | **`4`** | — | **Down** |
 | **`d`** | `d` | **`5`** | **`%`** (Modulo) | **Right** |
 | **`f`** | `f` | **`6`** | **`^`** (Power) | Formulas Manager (`STATE_FORMULAS`) |
 | **`g`** | `g` | **`/`** (Divide) | **`\`** (Backslash) | 2D Plot Viewer (`STATE_PLOT`) |

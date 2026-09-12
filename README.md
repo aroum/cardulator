@@ -1,4 +1,4 @@
-# Cardulator — Scientific REPL Calculator & Scripting Engine for M5Stack Cardputer
+# Cardulator — Scientific REPL Calculator & Scripting Engine for M5Stack Cardputer & LilyGO T-Deck Pro
 
 [Russian / Русский](README_RU.md) | [LilyGO T-Deck Pro Guide](README_TDECK_PRO.md)
 
@@ -11,12 +11,16 @@
 ![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
-**Cardulator** is a powerful, feature-rich scientific mathematical calculator and REPL scripting environment designed specifically for the **M5Stack Cardputer ADV** (ESP32-S3). Built on top of the robust [`TinyExpr-PlusPlus`](https://github.com/Blake-Madden/tinyexpr-plusplus) engine, Cardulator provides real-time syntax highlighting, rainbow bracket matching, SI prefix parsing, scientific notation, user variables and functions, multi-variable formula wizards, a C-style scripting engine with array support, matrix/vector operations, customizable hotkey binds, and interactive 2D function plotting.
+**Cardulator** is a powerful, feature-rich scientific mathematical calculator and REPL scripting environment designed for the **M5Stack Cardputer** and **LilyGO T-Deck Pro** (ESP32-S3). Built on top of the robust [`TinyExpr-PlusPlus`](https://github.com/Blake-Madden/tinyexpr-plusplus) engine and integrated with the complete [`GNU Units`](https://www.gnu.org/software/units/) database, Cardulator provides real-time syntax highlighting, rainbow bracket matching, SI prefix parsing, comprehensive physical unit conversions (`conv(10, "m/s", "km/hr")`), scientific notation, user variables and functions, multi-variable formula wizards, a C-style scripting engine with array support, matrix/vector operations, customizable hotkey binds, interactive 2D function plotting, and monochrome E-Paper display support.
 
 ---
 
 ## Key Features
 
+- **Multi-Platform Hardware Support**:
+  - **M5Stack Cardputer ADV**: Color LCD display (240×135), 56-key keyboard, double-buffered graphics.
+  - **LilyGO T-Deck Pro**: 3.1" Monochrome E-Paper display (320×240) with fast partial line updates, clean refresh (`Alt+R`), and 35-key matrix keyboard via TCA8418. See the dedicated [LilyGO T-Deck Pro Guide](README_TDECK_PRO.md) for detailed hardware revisions, keypad mapping, and display shortcuts.
+- **Embedded GNU Units Engine (`conv(...)`)**: Embedded 3000+ unit database running directly from Flash memory via ESP-IDF VFS with instant dimensional autocomplete and physical dimension filtering (`conv(2, "inch", "mm")`, `conv(1, "hp", "W")`, resistor SMD/EIA-96 codes, AWG wire gauges, and decibels).
 - **High-Performance REPL**: Interactive evaluation loop with `Tab` autocompletion, 1-based answer history (`e1`, `e2`...), SI prefix parsing (`1k` = `1000`, `2M2` = `2,200,000`), scientific notation (`5e10`), and multi-statement lines using `;`.
 - **Dynamic Syntax Highlighting**: Real-time rainbow bracket depth matching (`( )`), yellow numbers, cyan variables, magenta constants, and red syntax/error highlighting.
 - **2D Plotting Engine (`STATE_PLOT` / `Fn + G`)**: Interactive Matplotlib-like 2D function and vector plotter (`plot(y)`, `plot(x, y, color, linestyle)`) with panning (WASD / Arrows), 5x turbo zoom (`Ctrl + Zoom`), auto-scaling, and `plot.hold()`.
@@ -24,7 +28,7 @@
 - **Scripting Engine (`Fn + S`)**: C-style script runner supporting `if/elif/else`, `while`, `for`, `sleep()`, 1D arrays/vectors, element-wise math (`.*`, `./`), dot products, and formatted text printing (`print("x={x}")`).
 - **Customizable Hotkey Binds (`Fn + B`)**: Bind expressions or template shortcuts to `Alt + [Key]` for quick one-touch execution in REPL.
 - **NVS Storage & Persistence**: Automatic background saving and loading of user variables, functions, scripts, keybindings, and system parameters across reboots.
-- **100% Host Unit Testing**: Built-in native test suite running 20 comprehensive unit tests on host OS (macOS/Linux) via PlatformIO `native`.
+- **100% Host Unit Testing**: Built-in native test suite running 26 comprehensive unit tests on host OS (macOS/Linux) via PlatformIO `native`.
 
 ---
 
