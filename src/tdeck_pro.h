@@ -292,6 +292,7 @@ private:
             // Shift + Sym special overrides
             if (use_shift) {
                 char base_ch = getBaseKey(row, col);
+                if (!_shift_held) _shift_sticky = false; // consume sticky shift after Shift+Sym combo
                 if (base_ch == 'g') { s.word.push_back('\\'); return; } // Shift + Sym + g = '\'
                 if (base_ch == 'n') { s.word.push_back('<'); return; }  // Shift + Sym + n = '<'
                 if (base_ch == 'm') { s.word.push_back('>'); return; }  // Shift + Sym + m = '>'
@@ -313,6 +314,7 @@ private:
                 s.word.push_back(sym_ch);
             }
             if (!_sym_held) _sym_sticky = false;
+            if (!_shift_held) _shift_sticky = false; // consume sticky shift after Sym character
             return;
         }
 
