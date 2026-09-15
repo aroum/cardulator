@@ -254,7 +254,7 @@ private:
 
         s.alt = use_alt;
         s.shift = use_shift;
-        s.fn = use_alt; // Alt acts exactly as Fn in Cardputer
+        s.fn = false;
 
         // 1. Navigation / Modes via Alt layer (Fn)
         if (use_alt) {
@@ -282,9 +282,9 @@ private:
             else if (base_ch == 'v') { s.fn = true; s.word.push_back('v'); } // Vars
             else if (base_ch == 'p') { s.fn = true; s.word.push_back('p'); } // Params
             else if (base_ch == 'r') { triggerFullRefresh(); }
-            else if (base_ch == 't') { s.word.push_back('['); }
-            else if (base_ch == 'y') { s.word.push_back(']'); }
-            else if (base_ch == 'e') { s.word.push_back('='); } // Alt + E = '='
+            else if (base_ch == 't') { s.alt = false; s.word.push_back('['); } // '[' symbol into expression
+            else if (base_ch == 'y') { s.alt = false; s.word.push_back(']'); } // ']' symbol into expression
+            else if (base_ch == 'e') { s.alt = false; s.word.push_back('='); } // '=' symbol into expression
             return;
         }
 
