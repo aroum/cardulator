@@ -70,7 +70,7 @@ The T-Deck Pro features a 4-row physical matrix keyboard driven by the **TCA8418
 | Key | Base | `Sym` | `Shift + Sym` | `Alt` (Fn) |
 |:---:|:---:|:---:|:---:|:---:|
 | **`Alt`** | *Modifier* | *Modifier* | — | *Modifier* |
-| **`z`** | `z` | **`7`** | — | — |
+| **`z`** | `z` | **`7`** | **`&`** (Logical AND) | — |
 | **`x`** | `x` | **`8`** | — | — |
 | **`c`** | `c` | **`9`** | — | Constants Manager (`STATE_CONSTS`) |
 | **`v`** | `v` | **`?`** | — | Variables Manager (`STATE_VARS`) |
@@ -101,7 +101,7 @@ The T-Deck Pro features a 4-row physical matrix keyboard driven by the **TCA8418
 | **`<`** and **`>`** | `Shift + Sym + n` and `Shift + Sym + m` |
 | **`=`** | Press the **`=`** key (`$`) directly, or `Shift + Sym + o`, or `Alt + e` |
 | **`\`** | `Shift + Sym + g` |
-| **`&`** | `Shift + Sym + u` |
+| **`&`** | `Shift + Sym + 7` (key `z`) or `Shift + Sym + u` |
 | **`\|`** | `Sym + p` or `Shift + Sym + p` |
 | **`^`** | `Shift + Sym + f` |
 | **`%`** | `Shift + Sym + d` |

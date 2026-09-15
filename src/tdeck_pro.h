@@ -122,6 +122,7 @@ public:
             // Alt (Row 2, Col 0): acts as Fn on Cardputer
             if (row == 2 && col == 0) {
                 _alt_held = is_press;
+                if (is_press) _alt_sticky = !_alt_sticky;
                 has_event = true;
                 continue;
             }
@@ -134,12 +135,8 @@ public:
             }
             // Sym (Row 3, Col 8): Symbol / Number layer
             if (row == 3 && col == 8) {
-                if (is_press) {
-                    _sym_held = true;
-                    _sym_sticky = !_sym_sticky;
-                } else {
-                    _sym_held = false;
-                }
+                _sym_held = is_press;
+                if (is_press) _sym_sticky = !_sym_sticky;
                 has_event = true;
                 continue;
             }
@@ -244,14 +241,14 @@ public:
     }
 
     static bool isSymActive() { return _sym_held || _sym_sticky; }
-    static bool isAltActive() { return _alt_held; }
+    static bool isAltActive() { return _alt_held || _alt_sticky; }
     static bool isShiftActive() { return _shift_held || _shift_sticky; }
     static int getLastPressedRow() { return _last_pressed_row; }
     static int getLastPressedCol() { return _last_pressed_col; }
 
 private:
     static void generateKeyState(int row, int col, Keyboard_Class::KeysState& s) {
-        bool use_alt = _alt_held;
+        bool use_alt = _alt_held || _alt_sticky;
         bool use_sym = _sym_held || _sym_sticky;
         bool use_shift = _shift_held || _shift_sticky;
 
@@ -262,6 +259,10 @@ private:
         // 1. Navigation / Modes via Alt layer (Fn)
         if (use_alt) {
             char base_ch = getBaseKey(row, col);
+            if (!_alt_held) _alt_sticky = false;
+            if (!_shift_held) _shift_sticky = false;
+            if (!_sym_held) _sym_sticky = false;
+
             if (base_ch == 'q') { s.fn = true; s.word.push_back('q'); } // Alt + Q = Return to REPL
             else if (base_ch == 'w' || base_ch == 'i') { s.up = true; }
             else if (base_ch == 's' || base_ch == 'k') { s.down = true; }
@@ -292,7 +293,9 @@ private:
             // Shift + Sym special overrides
             if (use_shift) {
                 char base_ch = getBaseKey(row, col);
-                if (!_shift_held) _shift_sticky = false; // consume sticky shift after Shift+Sym combo
+                if (!_shift_held) _shift_sticky = false;
+                if (!_sym_held) _sym_sticky = false;
+                if (base_ch == 'z') { s.word.push_back('&'); return; }  // Shift + Sym + 7 (z) = '&'
                 if (base_ch == 'g') { s.word.push_back('\\'); return; } // Shift + Sym + g = '\'
                 if (base_ch == 'n') { s.word.push_back('<'); return; }  // Shift + Sym + n = '<'
                 if (base_ch == 'm') { s.word.push_back('>'); return; }  // Shift + Sym + m = '>'
@@ -314,7 +317,7 @@ private:
                 s.word.push_back(sym_ch);
             }
             if (!_sym_held) _sym_sticky = false;
-            if (!_shift_held) _shift_sticky = false; // consume sticky shift after Sym character
+            if (!_shift_held) _shift_sticky = false;
             return;
         }
 
@@ -334,8 +337,11 @@ private:
                 }
                 s.word.push_back(ch);
             }
-            if (!_shift_held) _shift_sticky = false;
         }
+        // Always consume sticky modifiers after any base layer action
+        if (!_shift_held) _shift_sticky = false;
+        if (!_sym_held) _sym_sticky = false;
+        if (!_alt_held) _alt_sticky = false;
     }
 
     static char getBaseKey(int row, int col) {
@@ -360,6 +366,7 @@ private:
 
     static inline Adafruit_TCA8418 _keypad;
     static inline bool _alt_held = false;
+    static inline bool _alt_sticky = false;
     static inline bool _shift_held = false;
     static inline bool _shift_sticky = false;
     static inline bool _sym_held = false;
