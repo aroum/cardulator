@@ -263,6 +263,12 @@ private:
             if (!_shift_held) _shift_sticky = false;
             if (!_sym_held) _sym_sticky = false;
 
+            // Sym + Alt combination for square brackets
+            if (use_sym) {
+                if (base_ch == 't') { s.alt = false; s.word.push_back('['); return; }
+                if (base_ch == 'y') { s.alt = false; s.word.push_back(']'); return; }
+            }
+
             if (base_ch == 'q') { s.fn = true; s.word.push_back('q'); } // Alt + Q = Return to REPL
             else if (base_ch == 'w' || base_ch == 'i') { s.up = true; }
             else if (base_ch == 's' || base_ch == 'k') { s.down = true; }
@@ -282,8 +288,7 @@ private:
             else if (base_ch == 'v') { s.fn = true; s.word.push_back('v'); } // Vars
             else if (base_ch == 'p') { s.fn = true; s.word.push_back('p'); } // Params
             else if (base_ch == 'r') { triggerFullRefresh(); }
-            else if (base_ch == 't') { s.alt = false; s.word.push_back('['); } // '[' symbol into expression
-            else if (base_ch == 'y') { s.alt = false; s.word.push_back(']'); } // ']' symbol into expression
+            else if (base_ch == 't') { s.fn = true; s.word.push_back('t'); } // Alt + T = tan(
             else if (base_ch == 'e') { s.alt = false; s.word.push_back('='); } // '=' symbol into expression
             return;
         }

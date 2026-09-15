@@ -96,7 +96,7 @@ The T-Deck Pro features a 4-row physical matrix keyboard driven by the **TCA8418
 | Symbol | How to Type |
 |:---:|:---|
 | **`(`** and **`)`** | `Sym + t` and `Sym + y` |
-| **`[`** and **`]`** | `Alt + t` and `Alt + y` |
+| **`[`** and **`]`** | `Sym + Alt + t` and `Sym + Alt + y` |
 | **`{`** and **`}`** | `Shift + Sym + t` and `Shift + Sym + y` |
 | **`<`** and **`>`** | `Shift + Sym + n` and `Shift + Sym + m` |
 | **`=`** | Press the **`=`** key (`$`) directly, or `Shift + Sym + o`, or `Alt + e` |
