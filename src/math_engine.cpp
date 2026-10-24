@@ -1014,7 +1014,21 @@ double evaluate(const std::string& expr_str, std::string& err) {
         if (err_msg.find("bracket") != std::string::npos || err_msg.find("parenthes") != std::string::npos) {
             err = "Mismatched Brackets";
         } else if (err_msg.find("unknown") != std::string::npos || err_msg.find("token") != std::string::npos || err_msg.find("symbol") != std::string::npos) {
-            err = "Unknown Token";
+            int64_t pos = tep.get_last_error_position();
+            if (pos >= 0 && (size_t)pos < preprocessed.size()) {
+                size_t end = pos;
+                while (end < preprocessed.size() && (std::isalnum((unsigned char)preprocessed[end]) || preprocessed[end] == '_')) {
+                    end++;
+                }
+                std::string token = preprocessed.substr(pos, end - pos);
+                if (!token.empty()) {
+                    err = "Unknown Token: '" + token + "'";
+                } else {
+                    err = "Unknown Token";
+                }
+            } else {
+                err = "Unknown Token";
+            }
         } else {
             err = "Math Error";
         }

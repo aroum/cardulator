@@ -30,12 +30,14 @@ std::map<std::string, std::vector<double>> user_arrays;
 std::vector<std::string> script_console_output;
 bool use_thousands_sep = false;
 std::vector<std::string> autocomplete_words = {
-    "sin(", "cos(", "tan(", "ctan(", "asin(", "acos(", "atan(",
+    "sin(", "cos(", "tan(", "ctan(", "cot(", "asin(", "acos(", "atan(", "atan2(",
     "sinh(", "cosh(", "tanh(", "asinh(", "acosh(", "atanh(",
-    "sqrt(", "ln(", "log(", "log2(", "logb(", "exp(", "cbrt(",
+    "deg2rad(", "d2r(", "rad2deg(", "r2d(",
+    "sqrt(", "cbrt(", "exp(", "ln(", "log(", "log10(", "log2(", "logb(",
     "abs(", "ceil(", "floor(", "round(", "trunc(", "sgn(", "mod(",
-    "mean(", "median(", "var(", "std(", "rUni(", "rNor(",
-    "fact(", "C(", "P(", "gcd(", "lcm(", "fib(", "len(", "print(", "conv(", "help(", "help()", "const ",
+    "mean(", "median(", "mode(", "var(", "std(", "dot(", "len(", "rUni(", "rNor(",
+    "fact(", "C(", "P(", "gcd(", "lcm(", "fib(",
+    "print(", "run(", "conv(", "help(", "help()", "const ", "def ", "fn ",
     "pi", "e", "phi",
     "plot(", "plot.show()", "plot.close()", "plot.hold(", "plot.xlim(", "plot.ylim("
 };
@@ -53,12 +55,14 @@ void setUp(void) {
     script_console_output.clear();
     plot_lines.clear();
     autocomplete_words = {
-        "sin(", "cos(", "tan(", "ctan(", "asin(", "acos(", "atan(",
+        "sin(", "cos(", "tan(", "ctan(", "cot(", "asin(", "acos(", "atan(", "atan2(",
         "sinh(", "cosh(", "tanh(", "asinh(", "acosh(", "atanh(",
-        "sqrt(", "ln(", "log(", "log2(", "logb(", "exp(", "cbrt(",
+        "deg2rad(", "d2r(", "rad2deg(", "r2d(",
+        "sqrt(", "cbrt(", "exp(", "ln(", "log(", "log10(", "log2(", "logb(",
         "abs(", "ceil(", "floor(", "round(", "trunc(", "sgn(", "mod(",
-        "mean(", "median(", "var(", "std(", "rUni(", "rNor(",
-        "fact(", "C(", "P(", "gcd(", "lcm(", "fib(", "len(", "print(", "conv(", "help(", "help()", "const ",
+        "mean(", "median(", "mode(", "var(", "std(", "dot(", "len(", "rUni(", "rNor(",
+        "fact(", "C(", "P(", "gcd(", "lcm(", "fib(",
+        "print(", "run(", "conv(", "help(", "help()", "const ", "def ", "fn ",
         "pi", "e", "phi",
         "plot(", "plot.show()", "plot.close()", "plot.hold(", "plot.xlim(", "plot.ylim("
     };
@@ -1056,6 +1060,8 @@ void test_tab_completion_suite(void) {
     handleTabCompletion(expr4, cursor4);
     TEST_ASSERT_EQUAL_STRING("ctan()", expr4.c_str());
     handleTabCompletion(expr4, cursor4);
+    TEST_ASSERT_EQUAL_STRING("cot()", expr4.c_str());
+    handleTabCompletion(expr4, cursor4);
     TEST_ASSERT_EQUAL_STRING("cosh()", expr4.c_str());
     handleTabCompletion(expr4, cursor4);
     TEST_ASSERT_EQUAL_STRING("cbrt()", expr4.c_str());
@@ -1065,6 +1071,31 @@ void test_tab_completion_suite(void) {
     TEST_ASSERT_EQUAL_STRING("conv()", expr4.c_str());
     handleTabCompletion(expr4, cursor4);
     TEST_ASSERT_EQUAL_STRING("const ", expr4.c_str());
+
+    // Deg2 / de / d2 completion
+    reset_tab();
+    std::string expr_deg2 = "deg2";
+    int cur_deg2 = 4;
+    handleTabCompletion(expr_deg2, cur_deg2);
+    TEST_ASSERT_EQUAL_STRING("deg2rad()", expr_deg2.c_str());
+    TEST_ASSERT_EQUAL_INT(8, cur_deg2);
+
+    reset_tab();
+    std::string expr_de = "de";
+    int cur_de = 2;
+    handleTabCompletion(expr_de, cur_de);
+    TEST_ASSERT_EQUAL_STRING("deg2rad()", expr_de.c_str());
+    TEST_ASSERT_EQUAL_INT(8, cur_de);
+    handleTabCompletion(expr_de, cur_de);
+    TEST_ASSERT_EQUAL_STRING("def ", expr_de.c_str());
+    TEST_ASSERT_EQUAL_INT(4, cur_de);
+
+    reset_tab();
+    std::string expr_d2 = "d2";
+    int cur_d2 = 2;
+    handleTabCompletion(expr_d2, cur_d2);
+    TEST_ASSERT_EQUAL_STRING("d2r()", expr_d2.c_str());
+    TEST_ASSERT_EQUAL_INT(4, cur_d2);
 
     // User variable priority
     reset_tab();
