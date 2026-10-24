@@ -153,16 +153,16 @@ void test_degrees_trig(void) {
 
     // 3. Domain boundaries & errors (asin/acos defined on [-1, 1])
     evaluate("asin(2)", err);
-    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+    TEST_ASSERT_EQUAL_STRING("Domain Error: asin(x) requires -1 <= x <= 1", err.c_str());
 
     evaluate("asin(-2)", err);
-    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+    TEST_ASSERT_EQUAL_STRING("Domain Error: asin(x) requires -1 <= x <= 1", err.c_str());
 
     evaluate("acos(1.5)", err);
-    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+    TEST_ASSERT_EQUAL_STRING("Domain Error: acos(x) requires -1 <= x <= 1", err.c_str());
 
     evaluate("acos(-1.5)", err);
-    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+    TEST_ASSERT_EQUAL_STRING("Domain Error: acos(x) requires -1 <= x <= 1", err.c_str());
 
     // 4. Trig in Radians Mode
     degreesMode = false;
@@ -214,13 +214,26 @@ void test_degrees_trig(void) {
 
     // Hyperbolic domain error checks
     evaluate("acosh(0.5)", err); // acosh defined for x >= 1
-    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+    TEST_ASSERT_EQUAL_STRING("Domain Error: acosh(x) requires x >= 1", err.c_str());
 
     evaluate("atanh(1.5)", err); // atanh defined for |x| < 1
-    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+    TEST_ASSERT_EQUAL_STRING("Domain Error: atanh(x) requires -1 < x < 1", err.c_str());
 
     evaluate("atanh(-2.0)", err);
-    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+    TEST_ASSERT_EQUAL_STRING("Domain Error: atanh(x) requires -1 < x < 1", err.c_str());
+
+    // Additional domain error checks for sqrt, log, ln, fact
+    evaluate("sqrt(-4)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: sqrt(x) requires x >= 0", err.c_str());
+
+    evaluate("log(-10)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: log(x) requires x > 0", err.c_str());
+
+    evaluate("ln(0)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: ln(x) requires x > 0", err.c_str());
+
+    evaluate("fact(-2)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: fact(n) requires n >= 0", err.c_str());
 
     // 6. Test deg2rad / d2r
     double res_d2r = evaluate("deg2rad(180)", err);

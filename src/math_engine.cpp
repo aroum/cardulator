@@ -902,6 +902,7 @@ std::string preprocessVectorStats(const std::string& s) {
 
 double evaluate(const std::string& expr_str, std::string& err) {
     err = "";
+    g_math_domain_err = "";
     std::string help_str;
     if (preprocessHelp(expr_str, help_str)) {
         err = help_str;
@@ -975,7 +976,10 @@ double evaluate(const std::string& expr_str, std::string& err) {
     tep.add_variable_or_function(te_variable{"rad2deg", custom_rad2deg});
     tep.add_variable_or_function(te_variable{"r2d", custom_rad2deg});
     
+    tep.add_variable_or_function(te_variable{"sqrt", custom_sqrt});
+    tep.add_variable_or_function(te_variable{"ln", custom_ln});
     tep.add_variable_or_function(te_variable{"log", custom_log10});
+    tep.add_variable_or_function(te_variable{"log10", custom_log10});
     tep.add_variable_or_function(te_variable{"log2", custom_log2});
     tep.add_variable_or_function(te_variable{"logb", custom_logb});
     tep.add_variable_or_function(te_variable{"mod", custom_mod});
@@ -1002,6 +1006,10 @@ double evaluate(const std::string& expr_str, std::string& err) {
     double val = tep.evaluate(preprocessed);
     
     if (!tep.success()) {
+        if (!g_math_domain_err.empty()) {
+            err = g_math_domain_err;
+            return std::numeric_limits<double>::quiet_NaN();
+        }
         std::string err_msg = tep.get_last_error_message();
         if (err_msg.find("bracket") != std::string::npos || err_msg.find("parenthes") != std::string::npos) {
             err = "Mismatched Brackets";
@@ -1013,7 +1021,11 @@ double evaluate(const std::string& expr_str, std::string& err) {
         return std::numeric_limits<double>::quiet_NaN();
     }
     
-    if (std::isnan(val) || std::isinf(val)) {
+    if (!g_math_domain_err.empty()) {
+        err = g_math_domain_err;
+    } else if (std::isinf(val)) {
+        err = "Division by Zero";
+    } else if (std::isnan(val)) {
         err = "Math Error";
     }
     
@@ -1731,19 +1743,19 @@ std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::
                     else if (func_name == "asin") res[i] = custom_asin(val);
                     else if (func_name == "acos") res[i] = custom_acos(val);
                     else if (func_name == "atan") res[i] = custom_atan(val);
-                    else if (func_name == "sinh") res[i] = sinh(val);
-                    else if (func_name == "cosh") res[i] = cosh(val);
-                    else if (func_name == "tanh") res[i] = tanh(val);
-                    else if (func_name == "asinh") res[i] = asinh(val);
-                    else if (func_name == "acosh") res[i] = acosh(val);
-                    else if (func_name == "atanh") res[i] = atanh(val);
-                    else if (func_name == "sqrt") res[i] = sqrt(val);
+                    else if (func_name == "sinh") res[i] = custom_sinh(val);
+                    else if (func_name == "cosh") res[i] = custom_cosh(val);
+                    else if (func_name == "tanh") res[i] = custom_tanh(val);
+                    else if (func_name == "asinh") res[i] = custom_asinh(val);
+                    else if (func_name == "acosh") res[i] = custom_acosh(val);
+                    else if (func_name == "atanh") res[i] = custom_atanh(val);
+                    else if (func_name == "sqrt") res[i] = custom_sqrt(val);
                     else if (func_name == "cbrt") res[i] = cbrt(val);
                     else if (func_name == "abs") res[i] = fabs(val);
                     else if (func_name == "exp") res[i] = exp(val);
-                    else if (func_name == "ln" || func_name == "log") res[i] = log(val);
-                    else if (func_name == "log10") res[i] = log10(val);
-                    else if (func_name == "log2") res[i] = log2(val);
+                    else if (func_name == "ln") res[i] = custom_ln(val);
+                    else if (func_name == "log" || func_name == "log10") res[i] = custom_log10(val);
+                    else if (func_name == "log2") res[i] = custom_log2(val);
                     else if (func_name == "deg2rad" || func_name == "d2r") res[i] = custom_deg2rad(val);
                     else if (func_name == "rad2deg" || func_name == "r2d") res[i] = custom_rad2deg(val);
                     else if (func_name == "floor") res[i] = floor(val);
