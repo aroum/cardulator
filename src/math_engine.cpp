@@ -1440,7 +1440,7 @@ void handleTabCompletion(std::string& expression, int& cursor_pos) {
             "kg", "kilogram", "g", "gram", "mg", "ug", "ton", "tonne", "lb", "pound", "oz", "ounce",
             "s", "sec", "second", "ms", "us", "ns", "min", "minute", "hr", "hour", "day", "week", "month", "year",
             "m/s", "km/hr", "km/h", "kph", "mph", "knot", "mach",
-            "m/s^2", "m/s2", "cm/s^2", "cm/s2", "km/s^2", "km/s2", "km/h^2", "km/h2", "ft/s^2", "ft/s2", "in/s^2", "in/s2", "gal", "g0", "gee", "gravity",
+            "m/s^2", "cm/s^2", "km/s^2", "km/h^2", "ft/s^2", "in/s^2", "gal", "g0", "gee", "gravity",
             "joule", "J", "kJ", "MJ", "cal", "calorie", "kcal", "eV", "keV", "MeV", "GeV", "Wh", "kWh", "MWh", "BTU",
             "newton", "N", "kN", "dyn", "dyne", "lbf", "kgf",
             "degC", "degF", "kelvin", "K", "deg", "degree", "rad", "radian"

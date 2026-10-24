@@ -950,7 +950,7 @@ void test_units_conversion(void) {
     TEST_ASSERT_TRUE(c_acc2.success);
     TEST_ASSERT_DOUBLE_WITHIN(1e-3, 9.80665, c_acc2.value);
 
-    ConvResult c_acc3 = handleConv(9.80665, "m/s2", "g", "");
+    ConvResult c_acc3 = handleConv(9.80665, "m/s^2", "g", "");
     TEST_ASSERT_TRUE(c_acc3.success);
     TEST_ASSERT_DOUBLE_WITHIN(1e-3, 1.0, c_acc3.value);
 
