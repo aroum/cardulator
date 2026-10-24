@@ -959,7 +959,16 @@ double evaluate(const std::string& expr_str, std::string& err) {
     tep.add_variable_or_function(te_variable{"asin", custom_asin});
     tep.add_variable_or_function(te_variable{"acos", custom_acos});
     tep.add_variable_or_function(te_variable{"atan", custom_atan});
+    tep.add_variable_or_function(te_variable{"atan2", custom_atan2});
     tep.add_variable_or_function(te_variable{"ctan", custom_ctan});
+    tep.add_variable_or_function(te_variable{"cot", custom_cot});
+
+    tep.add_variable_or_function(te_variable{"sinh", custom_sinh});
+    tep.add_variable_or_function(te_variable{"cosh", custom_cosh});
+    tep.add_variable_or_function(te_variable{"tanh", custom_tanh});
+    tep.add_variable_or_function(te_variable{"asinh", custom_asinh});
+    tep.add_variable_or_function(te_variable{"acosh", custom_acosh});
+    tep.add_variable_or_function(te_variable{"atanh", custom_atanh});
     
     tep.add_variable_or_function(te_variable{"deg2rad", custom_deg2rad});
     tep.add_variable_or_function(te_variable{"d2r", custom_deg2rad});
@@ -1298,6 +1307,9 @@ static std::vector<std::string> get_unit_dimensions(const std::string& raw_unit)
     if (in_set({"m/s", "km/hr", "km/h", "kph", "mph", "knot", "knots", "mach"})) {
         dims.push_back("speed");
     }
+    if (in_set({"m/s^2", "m/s2", "cm/s^2", "cm/s2", "km/s^2", "km/s2", "km/h^2", "km/h2", "km/hr^2", "km/hr2", "ft/s^2", "ft/s2", "fps2", "in/s^2", "in/s2", "gal", "g0", "gee", "gravity", "g"})) {
+        dims.push_back("acceleration");
+    }
     if (in_set({"joule", "joules", "j", "kj", "mj", "cal", "calorie", "calories", "kcal", "ev", "kev", "mev", "gev", "wh", "kwh", "mwh", "btu"})) {
         dims.push_back("energy");
     }
@@ -1428,6 +1440,7 @@ void handleTabCompletion(std::string& expression, int& cursor_pos) {
             "kg", "kilogram", "g", "gram", "mg", "ug", "ton", "tonne", "lb", "pound", "oz", "ounce",
             "s", "sec", "second", "ms", "us", "ns", "min", "minute", "hr", "hour", "day", "week", "month", "year",
             "m/s", "km/hr", "km/h", "kph", "mph", "knot", "mach",
+            "m/s^2", "m/s2", "cm/s^2", "cm/s2", "km/s^2", "km/s2", "km/h^2", "km/h2", "ft/s^2", "ft/s2", "in/s^2", "in/s2", "gal", "g0", "gee", "gravity",
             "joule", "J", "kJ", "MJ", "cal", "calorie", "kcal", "eV", "keV", "MeV", "GeV", "Wh", "kWh", "MWh", "BTU",
             "newton", "N", "kN", "dyn", "dyne", "lbf", "kgf",
             "degC", "degF", "kelvin", "K", "deg", "degree", "rad", "radian"

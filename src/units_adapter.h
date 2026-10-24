@@ -602,6 +602,29 @@ inline ConvResult handleConv(double value,
             return false;
         };
 
+        // Speed (base: m/s)
+        auto getSpeedFactor = [](const std::string& u, double& factor, std::string& canonical) -> bool {
+            if (u == "m/s" || u == "mps") { factor = 1.0; canonical = "m/s"; return true; }
+            if (u == "km/h" || u == "km/hr" || u == "kph") { factor = 1000.0 / 3600.0; canonical = "km/h"; return true; }
+            if (u == "mph" || u == "mi/h" || u == "mile/h") { factor = 1609.344 / 3600.0; canonical = "mph"; return true; }
+            if (u == "knot" || u == "knots" || u == "kt") { factor = 1852.0 / 3600.0; canonical = "knot"; return true; }
+            if (u == "mach") { factor = 331.46; canonical = "mach"; return true; }
+            if (u == "ft/s" || u == "fps") { factor = 0.3048; canonical = "ft/s"; return true; }
+            return false;
+        };
+
+        // Acceleration (base: m/s^2)
+        auto getAccelerationFactor = [](const std::string& u, double& factor, std::string& canonical) -> bool {
+            if (u == "m/s^2" || u == "m/s2" || u == "m / s^2" || u == "m / s2") { factor = 1.0; canonical = "m/s^2"; return true; }
+            if (u == "cm/s^2" || u == "cm/s2" || u == "cm / s^2" || u == "cm / s2" || u == "gal") { factor = 0.01; canonical = "cm/s^2"; return true; }
+            if (u == "km/s^2" || u == "km/s2" || u == "km / s^2" || u == "km / s2") { factor = 1000.0; canonical = "km/s^2"; return true; }
+            if (u == "km/h^2" || u == "km/h2" || u == "km/hr^2" || u == "km/hr2" || u == "km / h^2" || u == "km / h2") { factor = 1000.0 / (3600.0 * 3600.0); canonical = "km/h^2"; return true; }
+            if (u == "ft/s^2" || u == "ft/s2" || u == "ft / s^2" || u == "ft / s2" || u == "fps2") { factor = 0.3048; canonical = "ft/s^2"; return true; }
+            if (u == "in/s^2" || u == "in/s2" || u == "in / s^2" || u == "in / s2") { factor = 0.0254; canonical = "in/s^2"; return true; }
+            if (u == "g0" || u == "gee" || u == "gravity" || u == "g") { factor = 9.80665; canonical = (u == "g0" || u == "gee" || u == "g" ? u : "g0"); return true; }
+            return false;
+        };
+
         // Temperature (special conversion)
         auto isTemp = [](const std::string& u) {
             return u == "degc" || u == "degf" || u == "k" || u == "kelvin";
@@ -695,6 +718,32 @@ inline ConvResult handleConv(double value,
                 return res;
             }
         }
+        if (getSpeedFactor(la, f_a, can_a)) {
+            if (lb.empty()) {
+                res.success = true;
+                res.value = value * f_a;
+                res.unitStr = "m/s";
+                return res;
+            } else if (getSpeedFactor(lb, f_b, can_b)) {
+                res.success = true;
+                res.value = (value * f_a) / f_b;
+                res.unitStr = unit_b.empty() ? can_b : unit_b;
+                return res;
+            }
+        }
+        if (getAccelerationFactor(la, f_a, can_a)) {
+            if (lb.empty()) {
+                res.success = true;
+                res.value = value * f_a;
+                res.unitStr = "m/s^2";
+                return res;
+            } else if (getAccelerationFactor(lb, f_b, can_b)) {
+                res.success = true;
+                res.value = (value * f_a) / f_b;
+                res.unitStr = unit_b.empty() ? can_b : unit_b;
+                return res;
+            }
+        }
     }
 
     // --- 3. Fallback to GNU Units bridge ---
@@ -720,6 +769,15 @@ inline ConvResult handleConv(double value,
         if (low == "khz")  return "kHz";
         if (low == "mhz")  return "MHz";
         if (low == "ghz")  return "GHz";
+        if (low == "g0" || low == "gee") return "gravity";
+        if (low == "gal")  return "Gal";
+        if (low == "km/h^2" || low == "km/h2") return "km / hr^2";
+        if (low == "km/hr2") return "km / hr^2";
+        if (low == "km/h" || low == "kph") return "km / hr";
+        if (low == "m/s2") return "m / s^2";
+        if (low == "cm/s2") return "cm / s^2";
+        if (low == "ft/s2") return "ft / s^2";
+        if (low == "in/s2") return "in / s^2";
         return u;
     };
 

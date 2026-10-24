@@ -15,7 +15,17 @@ inline double custom_tan(double x) { return degreesMode ? std::tan(x * M_PI / 18
 inline double custom_asin(double x) { return degreesMode ? std::asin(x) * 180.0 / M_PI : std::asin(x); }
 inline double custom_acos(double x) { return degreesMode ? std::acos(x) * 180.0 / M_PI : std::acos(x); }
 inline double custom_atan(double x) { return degreesMode ? std::atan(x) * 180.0 / M_PI : std::atan(x); }
+inline double custom_atan2(double y, double x) { return degreesMode ? std::atan2(y, x) * 180.0 / M_PI : std::atan2(y, x); }
 inline double custom_ctan(double x) { return 1.0 / custom_tan(x); }
+inline double custom_cot(double x) { return custom_ctan(x); }
+
+// Hyperbolic functions (independent of Degrees/Radians mode)
+inline double custom_sinh(double x) { return std::sinh(x); }
+inline double custom_cosh(double x) { return std::cosh(x); }
+inline double custom_tanh(double x) { return std::tanh(x); }
+inline double custom_asinh(double x) { return std::asinh(x); }
+inline double custom_acosh(double x) { return std::acosh(x); }
+inline double custom_atanh(double x) { return std::atanh(x); }
 
 // Custom math functions
 inline double custom_deg2rad(double deg) { return deg * M_PI / 180.0; }

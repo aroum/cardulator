@@ -86,7 +86,7 @@ static uint32_t press_time_opt = 0;
 static uint32_t press_time_ctrl = 0;
 static uint32_t press_time_alt = 0;
 std::vector<std::string> autocomplete_words = {
-    "sin(", "cos(", "tan(", "ctan(", "asin(", "acos(", "atan(",
+    "sin(", "cos(", "tan(", "ctan(", "cot(", "asin(", "acos(", "atan(", "atan2(",
     "sinh(", "cosh(", "tanh(", "asinh(", "acosh(", "atanh(",
     "deg2rad(", "d2r(", "rad2deg(", "r2d(",
     "sqrt(", "ln(", "log(", "log2(", "logb(", "exp(", "cbrt(",
@@ -2608,7 +2608,7 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
                     resultStr = assign_var1 + " = " + fmtNum(c_res.value);
                 } else {
                     resultStr = assign_var1 + " = " + fmtNum(c_res.value);
-                    if (!c_res.unitStr.empty()) resultStr += " " + c_res.unitStr;
+                    if (!c_res.unitStr.empty()) resultStr += " (" + c_res.unitStr + ")";
                 }
                 pushResultHistory(c_res.value, resultStr);
             } else {
@@ -2616,7 +2616,7 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
                     resultStr = c_res.unitStr;
                 } else {
                     resultStr = fmtNum(c_res.value);
-                    if (!c_res.unitStr.empty()) resultStr += " " + c_res.unitStr;
+                    if (!c_res.unitStr.empty()) resultStr += " (" + c_res.unitStr + ")";
                 }
                 pushResultHistory(c_res.value, "e" + std::to_string(history.size() + 1) + " = " + resultStr);
             }

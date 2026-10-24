@@ -111,6 +111,9 @@ void test_basic_evaluation(void) {
 
 void test_degrees_trig(void) {
     std::string err;
+    degreesMode = true;
+
+    // 1. Basic trig in Degrees Mode
     double res_sin = evaluate("sin(30)", err);
     TEST_ASSERT_TRUE(err.empty());
     TEST_ASSERT_EQUAL_FLOAT(0.5, res_sin);
@@ -119,11 +122,107 @@ void test_degrees_trig(void) {
     TEST_ASSERT_TRUE(err.empty());
     TEST_ASSERT_EQUAL_FLOAT(0.5, res_cos);
 
+    double res_tan = evaluate("tan(45)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(1.0, res_tan);
+
     double res_ctan = evaluate("ctan(45)", err);
     TEST_ASSERT_TRUE(err.empty());
     TEST_ASSERT_EQUAL_FLOAT(1.0, res_ctan);
 
-    // Test deg2rad / d2r
+    double res_cot = evaluate("cot(45)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(1.0, res_cot);
+
+    // 2. Inverse trig in Degrees Mode
+    double res_asin = evaluate("asin(0.5)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(30.0, res_asin);
+
+    double res_acos = evaluate("acos(0.5)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(60.0, res_acos);
+
+    double res_atan = evaluate("atan(1.0)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(45.0, res_atan);
+
+    double res_atan2 = evaluate("atan2(1.0, 1.0)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(45.0, res_atan2);
+
+    // 3. Domain boundaries & errors (asin/acos defined on [-1, 1])
+    evaluate("asin(2)", err);
+    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+
+    evaluate("asin(-2)", err);
+    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+
+    evaluate("acos(1.5)", err);
+    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+
+    evaluate("acos(-1.5)", err);
+    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+
+    // 4. Trig in Radians Mode
+    degreesMode = false;
+    double res_sin_rad = evaluate("sin(pi / 6)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(0.5, res_sin_rad);
+
+    double res_cos_rad = evaluate("cos(pi / 3)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(0.5, res_cos_rad);
+
+    double res_asin_rad = evaluate("asin(1)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(M_PI / 2.0, res_asin_rad);
+
+    double res_atan_rad = evaluate("atan(1)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(M_PI / 4.0, res_atan_rad);
+
+    double res_atan2_rad = evaluate("atan2(1, 1)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(M_PI / 4.0, res_atan2_rad);
+    degreesMode = true; // Restore
+
+    // 5. Hyperbolic functions & Inverse Hyperbolic functions
+    double res_sinh0 = evaluate("sinh(0)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(0.0, res_sinh0);
+
+    double res_cosh0 = evaluate("cosh(0)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(1.0, res_cosh0);
+
+    double res_tanh0 = evaluate("tanh(0)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(0.0, res_tanh0);
+
+    double res_asinh = evaluate("asinh(sinh(1.5))", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 1.5, res_asinh);
+
+    double res_acosh = evaluate("acosh(cosh(2.0))", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 2.0, res_acosh);
+
+    double res_atanh = evaluate("atanh(tanh(0.75))", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 0.75, res_atanh);
+
+    // Hyperbolic domain error checks
+    evaluate("acosh(0.5)", err); // acosh defined for x >= 1
+    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+
+    evaluate("atanh(1.5)", err); // atanh defined for |x| < 1
+    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+
+    evaluate("atanh(-2.0)", err);
+    TEST_ASSERT_EQUAL_STRING("Math Error", err.c_str());
+
+    // 6. Test deg2rad / d2r
     double res_d2r = evaluate("deg2rad(180)", err);
     TEST_ASSERT_TRUE(err.empty());
     TEST_ASSERT_EQUAL_FLOAT(M_PI, res_d2r);
@@ -132,7 +231,7 @@ void test_degrees_trig(void) {
     TEST_ASSERT_TRUE(err.empty());
     TEST_ASSERT_EQUAL_FLOAT(M_PI / 2.0, res_d2r_short);
 
-    // Test rad2deg / r2d
+    // 7. Test rad2deg / r2d
     double res_r2d = evaluate("rad2deg(pi)", err);
     TEST_ASSERT_TRUE(err.empty());
     TEST_ASSERT_EQUAL_FLOAT(180.0, res_r2d);
@@ -841,6 +940,27 @@ void test_units_conversion(void) {
     ConvResult c_gnu4 = handleConv(1, "acre", "m^2", "");
     TEST_ASSERT_TRUE(c_gnu4.success);
     TEST_ASSERT_DOUBLE_WITHIN(1.0, 4046.86, c_gnu4.value);
+
+    // 10. Acceleration units conversion
+    ConvResult c_acc1 = handleConv(1, "m/s^2", "cm/s^2", "");
+    TEST_ASSERT_TRUE(c_acc1.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 100.0, c_acc1.value);
+
+    ConvResult c_acc2 = handleConv(1, "g0", "m/s^2", "");
+    TEST_ASSERT_TRUE(c_acc2.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 9.80665, c_acc2.value);
+
+    ConvResult c_acc3 = handleConv(9.80665, "m/s2", "g", "");
+    TEST_ASSERT_TRUE(c_acc3.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 1.0, c_acc3.value);
+
+    ConvResult c_acc4 = handleConv(100, "gal", "m/s^2", "");
+    TEST_ASSERT_TRUE(c_acc4.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-3, 1.0, c_acc4.value);
+
+    ConvResult c_acc5 = handleConv(1, "gravity", "ft/s^2", "");
+    TEST_ASSERT_TRUE(c_acc5.success);
+    TEST_ASSERT_DOUBLE_WITHIN(0.01, 32.174, c_acc5.value);
 }
 
 void test_num_formatting(void) {
@@ -996,6 +1116,14 @@ void test_tab_completion_suite(void) {
     handleTabCompletion(expr_wire, cur_wire);
     TEST_ASSERT_EQUAL_STRING("conv(10, \"awg\", mm^2", expr_wire.c_str());
     TEST_ASSERT_EQUAL_INT(20, cur_wire);
+
+    // Dimension-aware filtering: acceleration source "m/s^2" completing "c" gives "cm/s^2"
+    reset_tab();
+    std::string expr_acc = "conv(10, \"m/s^2\", c";
+    int cur_acc = 19;
+    handleTabCompletion(expr_acc, cur_acc);
+    TEST_ASSERT_EQUAL_STRING("conv(10, \"m/s^2\", cm/s^2", expr_acc.c_str());
+    TEST_ASSERT_EQUAL_INT(24, cur_acc);
 }
 
 void test_plot_limits_extended(void) {
