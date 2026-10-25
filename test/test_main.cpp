@@ -381,6 +381,60 @@ void test_degrees_trig(void) {
     evaluate("fact(-2)", err);
     TEST_ASSERT_EQUAL_STRING("Domain Error: fact(n) requires n >= 0", err.c_str());
 
+    // Domain errors for new trigonometric and hyperbolic functions
+    evaluate("asec(0.5)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: asec(x) requires |x| >= 1", err.c_str());
+
+    evaluate("arcsec(-0.5)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: asec(x) requires |x| >= 1", err.c_str());
+
+    evaluate("acsc(0.5)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: acsc(x) requires |x| >= 1", err.c_str());
+
+    evaluate("arccsc(-0.5)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: acsc(x) requires |x| >= 1", err.c_str());
+
+    evaluate("coth(0)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: coth(x) requires x != 0", err.c_str());
+
+    evaluate("csch(0)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: csch(x) requires x != 0", err.c_str());
+
+    evaluate("acoth(0.5)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: acoth(x) requires |x| > 1", err.c_str());
+
+    evaluate("acoth(1.0)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: acoth(x) requires |x| > 1", err.c_str());
+
+    evaluate("asech(0)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: asech(x) requires 0 < x <= 1", err.c_str());
+
+    evaluate("asech(2)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: asech(x) requires 0 < x <= 1", err.c_str());
+
+    evaluate("acsch(0)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: acsch(x) requires x != 0", err.c_str());
+
+    // Singularity domain errors (degrees mode)
+    degreesMode = true;
+    evaluate("tan(90)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: tan(x) undefined when cos(x) = 0", err.c_str());
+
+    evaluate("tg(90)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: tan(x) undefined when cos(x) = 0", err.c_str());
+
+    evaluate("sec(90)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: sec(x) undefined when cos(x) = 0", err.c_str());
+
+    evaluate("csc(0)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: csc(x) undefined when sin(x) = 0", err.c_str());
+
+    evaluate("cot(0)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: cot(x) undefined when sin(x) = 0", err.c_str());
+
+    evaluate("ctg(0)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: cot(x) undefined when sin(x) = 0", err.c_str());
+
     // 6. Test deg2rad / d2r
     double res_d2r = evaluate("deg2rad(180)", err);
     TEST_ASSERT_TRUE(err.empty());

@@ -11,7 +11,15 @@
 // Custom function wrappers for Degrees/Radians mode and domain validation
 inline double custom_sin(double x) { g_last_result_angle = AngleUnit::NONE; return degreesMode ? std::sin(x * M_PI / 180.0) : std::sin(x); }
 inline double custom_cos(double x) { g_last_result_angle = AngleUnit::NONE; return degreesMode ? std::cos(x * M_PI / 180.0) : std::cos(x); }
-inline double custom_tan(double x) { g_last_result_angle = AngleUnit::NONE; return degreesMode ? std::tan(x * M_PI / 180.0) : std::tan(x); }
+inline double custom_tan(double x) {
+    g_last_result_angle = AngleUnit::NONE;
+    double c = custom_cos(x);
+    if (std::abs(c) < 1e-15) {
+        g_math_domain_err = "Domain Error: tan(x) undefined when cos(x) = 0";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return degreesMode ? std::tan(x * M_PI / 180.0) : std::tan(x);
+}
 
 inline double custom_cot(double x) {
     g_last_result_angle = AngleUnit::NONE;

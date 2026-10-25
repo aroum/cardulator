@@ -1943,6 +1943,10 @@ std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::
                     else if (func_name == "sgn") res[i] = (val > 0.0 ? 1.0 : (val < 0.0 ? -1.0 : 0.0));
                     else res[i] = val;
                 }
+                if (!g_math_domain_err.empty()) {
+                    err = g_math_domain_err;
+                    return {};
+                }
                 return res;
             }
         }
