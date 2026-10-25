@@ -17,6 +17,7 @@ std::string formatPrintString(const std::string& str, std::string& err);
 bool parseArrayElementAssignment(const std::string& line, std::string& name, std::string& idx_expr, std::string& val_expr);
 bool parseBinaryOp(const std::string& rhs, std::string& op1, std::string& op, std::string& op2);
 void handleTabCompletion(std::string& expression, int& cursor_pos);
+void resetTabState();
 double executeScriptFunc(const std::string& name, const std::vector<double>& arg_vals, std::string& err);
 
 #include "plot_engine.h"
