@@ -964,6 +964,9 @@ double evaluate(const std::string& expr_str, std::string& err) {
     tep.add_variable_or_function(te_variable{"atan2", custom_atan2});
     tep.add_variable_or_function(te_variable{"ctan", custom_ctan});
     tep.add_variable_or_function(te_variable{"cot", custom_cot});
+    tep.add_variable_or_function(te_variable{"arcsin", custom_asin});
+    tep.add_variable_or_function(te_variable{"arccos", custom_acos});
+    tep.add_variable_or_function(te_variable{"arctan", custom_atan});
 
     tep.add_variable_or_function(te_variable{"sinh", custom_sinh});
     tep.add_variable_or_function(te_variable{"cosh", custom_cosh});
@@ -971,6 +974,15 @@ double evaluate(const std::string& expr_str, std::string& err) {
     tep.add_variable_or_function(te_variable{"asinh", custom_asinh});
     tep.add_variable_or_function(te_variable{"acosh", custom_acosh});
     tep.add_variable_or_function(te_variable{"atanh", custom_atanh});
+    tep.add_variable_or_function(te_variable{"ahsin", custom_asinh});
+    tep.add_variable_or_function(te_variable{"ahcos", custom_acosh});
+    tep.add_variable_or_function(te_variable{"ahtan", custom_atanh});
+    tep.add_variable_or_function(te_variable{"arcsinh", custom_asinh});
+    tep.add_variable_or_function(te_variable{"arccosh", custom_acosh});
+    tep.add_variable_or_function(te_variable{"arctanh", custom_atanh});
+    tep.add_variable_or_function(te_variable{"arsinh", custom_asinh});
+    tep.add_variable_or_function(te_variable{"arcosh", custom_acosh});
+    tep.add_variable_or_function(te_variable{"artanh", custom_atanh});
     
     tep.add_variable_or_function(te_variable{"deg2rad", custom_deg2rad});
     tep.add_variable_or_function(te_variable{"d2r", custom_deg2rad});
@@ -1840,15 +1852,15 @@ std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::
                     else if (func_name == "sin") res[i] = custom_sin(val);
                     else if (func_name == "tan") res[i] = custom_tan(val);
                     else if (func_name == "ctan" || func_name == "cot") res[i] = custom_ctan(val);
-                    else if (func_name == "asin") res[i] = custom_asin(val);
-                    else if (func_name == "acos") res[i] = custom_acos(val);
-                    else if (func_name == "atan") res[i] = custom_atan(val);
+                    else if (func_name == "asin" || func_name == "arcsin") res[i] = custom_asin(val);
+                    else if (func_name == "acos" || func_name == "arccos") res[i] = custom_acos(val);
+                    else if (func_name == "atan" || func_name == "arctan") res[i] = custom_atan(val);
                     else if (func_name == "sinh") res[i] = custom_sinh(val);
                     else if (func_name == "cosh") res[i] = custom_cosh(val);
                     else if (func_name == "tanh") res[i] = custom_tanh(val);
-                    else if (func_name == "asinh") res[i] = custom_asinh(val);
-                    else if (func_name == "acosh") res[i] = custom_acosh(val);
-                    else if (func_name == "atanh") res[i] = custom_atanh(val);
+                    else if (func_name == "asinh" || func_name == "ahsin" || func_name == "arcsinh" || func_name == "arsinh") res[i] = custom_asinh(val);
+                    else if (func_name == "acosh" || func_name == "ahcos" || func_name == "arccosh" || func_name == "arcosh") res[i] = custom_acosh(val);
+                    else if (func_name == "atanh" || func_name == "ahtan" || func_name == "arctanh" || func_name == "artanh") res[i] = custom_atanh(val);
                     else if (func_name == "sqrt") res[i] = custom_sqrt(val);
                     else if (func_name == "cbrt") res[i] = cbrt(val);
                     else if (func_name == "abs") res[i] = fabs(val);

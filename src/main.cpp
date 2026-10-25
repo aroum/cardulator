@@ -87,7 +87,9 @@ static uint32_t press_time_ctrl = 0;
 static uint32_t press_time_alt = 0;
 std::vector<std::string> autocomplete_words = {
     "sin(", "cos(", "tan(", "ctan(", "cot(", "asin(", "acos(", "atan(", "atan2(",
+    "arcsin(", "arccos(", "arctan(",
     "sinh(", "cosh(", "tanh(", "asinh(", "acosh(", "atanh(",
+    "ahsin(", "ahcos(", "ahtan(", "arcsinh(", "arccosh(", "arctanh(",
     "deg2rad(", "d2r(", "rad2deg(", "r2d(",
     "sqrt(", "cbrt(", "exp(", "ln(", "log(", "log10(", "log2(", "logb(",
     "abs(", "ceil(", "floor(", "round(", "trunc(", "sgn(", "mod(",

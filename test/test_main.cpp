@@ -31,7 +31,9 @@ std::vector<std::string> script_console_output;
 bool use_thousands_sep = false;
 std::vector<std::string> autocomplete_words = {
     "sin(", "cos(", "tan(", "ctan(", "cot(", "asin(", "acos(", "atan(", "atan2(",
+    "arcsin(", "arccos(", "arctan(",
     "sinh(", "cosh(", "tanh(", "asinh(", "acosh(", "atanh(",
+    "ahsin(", "ahcos(", "ahtan(", "arcsinh(", "arccosh(", "arctanh(",
     "deg2rad(", "d2r(", "rad2deg(", "r2d(",
     "sqrt(", "cbrt(", "exp(", "ln(", "log(", "log10(", "log2(", "logb(",
     "abs(", "ceil(", "floor(", "round(", "trunc(", "sgn(", "mod(",
@@ -56,7 +58,9 @@ void setUp(void) {
     plot_lines.clear();
     autocomplete_words = {
         "sin(", "cos(", "tan(", "ctan(", "cot(", "asin(", "acos(", "atan(", "atan2(",
+        "arcsin(", "arccos(", "arctan(",
         "sinh(", "cosh(", "tanh(", "asinh(", "acosh(", "atanh(",
+        "ahsin(", "ahcos(", "ahtan(", "arcsinh(", "arccosh(", "arctanh(",
         "deg2rad(", "d2r(", "rad2deg(", "r2d(",
         "sqrt(", "cbrt(", "exp(", "ln(", "log(", "log10(", "log2(", "logb(",
         "abs(", "ceil(", "floor(", "round(", "trunc(", "sgn(", "mod(",
@@ -231,6 +235,22 @@ void test_degrees_trig(void) {
     double res_asinh = evaluate("asinh(sinh(1.5))", err);
     TEST_ASSERT_TRUE(err.empty());
     TEST_ASSERT_FLOAT_WITHIN(1e-4, 1.5, res_asinh);
+
+    double res_ahsin = evaluate("ahsin(sinh(1.5))", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 1.5, res_ahsin);
+
+    double res_ahcos = evaluate("ahcos(cosh(2.0))", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 2.0, res_ahcos);
+
+    double res_ahtan = evaluate("ahtan(tanh(0.75))", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 0.75, res_ahtan);
+
+    double res_arcsin = evaluate("arcsin(0.5)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 30.0, res_arcsin);
 
     double res_acosh = evaluate("acosh(cosh(2.0))", err);
     TEST_ASSERT_TRUE(err.empty());
