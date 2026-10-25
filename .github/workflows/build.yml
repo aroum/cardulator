@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     tags:
       - 'v*'
+      - '[0-9][0-9].[0-9][0-9].[0-9][0-9]*'
   pull_request:
     branches: [ main ]
 
@@ -74,7 +75,7 @@ jobs:
           ${{ steps.prep.outputs.tdeck_bin }}
 
     - name: Create GitHub Release
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
         files: |
@@ -83,7 +84,7 @@ jobs:
         generate_release_notes: true
 
     - name: Publish to M5Burner
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: startsWith(github.ref, 'refs/tags/')
       env:
         M5BURNER_USER: ${{ secrets.M5BURNER_USER }}
         M5BURNER_PWD: ${{ secrets.M5BURNER_PWD }}
