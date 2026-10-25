@@ -13,6 +13,38 @@ inline double custom_sin(double x) { g_last_result_angle = AngleUnit::NONE; retu
 inline double custom_cos(double x) { g_last_result_angle = AngleUnit::NONE; return degreesMode ? std::cos(x * M_PI / 180.0) : std::cos(x); }
 inline double custom_tan(double x) { g_last_result_angle = AngleUnit::NONE; return degreesMode ? std::tan(x * M_PI / 180.0) : std::tan(x); }
 
+inline double custom_cot(double x) {
+    g_last_result_angle = AngleUnit::NONE;
+    double s = custom_sin(x);
+    if (std::abs(s) < 1e-15) {
+        g_math_domain_err = "Domain Error: cot(x) undefined when sin(x) = 0";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return custom_cos(x) / s;
+}
+inline double custom_ctan(double x) { return custom_cot(x); }
+
+inline double custom_sec(double x) {
+    g_last_result_angle = AngleUnit::NONE;
+    double c = custom_cos(x);
+    if (std::abs(c) < 1e-15) {
+        g_math_domain_err = "Domain Error: sec(x) undefined when cos(x) = 0";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return 1.0 / c;
+}
+
+inline double custom_csc(double x) {
+    g_last_result_angle = AngleUnit::NONE;
+    double s = custom_sin(x);
+    if (std::abs(s) < 1e-15) {
+        g_math_domain_err = "Domain Error: csc(x) undefined when sin(x) = 0";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return 1.0 / s;
+}
+
+// Inverse trigonometric functions (return angle in degrees or radians)
 inline double custom_asin(double x) {
     if (x < -1.0 || x > 1.0) {
         g_math_domain_err = "Domain Error: asin(x) requires -1 <= x <= 1";
@@ -35,17 +67,66 @@ inline double custom_atan(double x) {
     g_last_result_angle = degreesMode ? AngleUnit::DEG : AngleUnit::RAD;
     return degreesMode ? std::atan(x) * 180.0 / M_PI : std::atan(x);
 }
+
 inline double custom_atan2(double y, double x) {
     g_last_result_angle = degreesMode ? AngleUnit::DEG : AngleUnit::RAD;
     return degreesMode ? std::atan2(y, x) * 180.0 / M_PI : std::atan2(y, x);
 }
-inline double custom_ctan(double x) { g_last_result_angle = AngleUnit::NONE; return 1.0 / custom_tan(x); }
-inline double custom_cot(double x) { g_last_result_angle = AngleUnit::NONE; return custom_ctan(x); }
+
+inline double custom_acot(double x) {
+    g_last_result_angle = degreesMode ? AngleUnit::DEG : AngleUnit::RAD;
+    double rad = (M_PI / 2.0) - std::atan(x);
+    return degreesMode ? rad * 180.0 / M_PI : rad;
+}
+
+inline double custom_asec(double x) {
+    if (std::abs(x) < 1.0) {
+        g_math_domain_err = "Domain Error: asec(x) requires |x| >= 1";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    g_last_result_angle = degreesMode ? AngleUnit::DEG : AngleUnit::RAD;
+    double rad = std::acos(1.0 / x);
+    return degreesMode ? rad * 180.0 / M_PI : rad;
+}
+
+inline double custom_acsc(double x) {
+    if (std::abs(x) < 1.0) {
+        g_math_domain_err = "Domain Error: acsc(x) requires |x| >= 1";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    g_last_result_angle = degreesMode ? AngleUnit::DEG : AngleUnit::RAD;
+    double rad = std::asin(1.0 / x);
+    return degreesMode ? rad * 180.0 / M_PI : rad;
+}
 
 // Hyperbolic functions (independent of Degrees/Radians mode)
 inline double custom_sinh(double x) { g_last_result_angle = AngleUnit::NONE; return std::sinh(x); }
 inline double custom_cosh(double x) { g_last_result_angle = AngleUnit::NONE; return std::cosh(x); }
 inline double custom_tanh(double x) { g_last_result_angle = AngleUnit::NONE; return std::tanh(x); }
+
+inline double custom_coth(double x) {
+    g_last_result_angle = AngleUnit::NONE;
+    if (x == 0.0) {
+        g_math_domain_err = "Domain Error: coth(x) requires x != 0";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return 1.0 / std::tanh(x);
+}
+
+inline double custom_sech(double x) {
+    g_last_result_angle = AngleUnit::NONE;
+    return 1.0 / std::cosh(x);
+}
+
+inline double custom_csch(double x) {
+    g_last_result_angle = AngleUnit::NONE;
+    if (x == 0.0) {
+        g_math_domain_err = "Domain Error: csch(x) requires x != 0";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return 1.0 / std::sinh(x);
+}
+
 inline double custom_asinh(double x) { g_last_result_angle = AngleUnit::NONE; return std::asinh(x); }
 
 inline double custom_acosh(double x) {
@@ -64,6 +145,33 @@ inline double custom_atanh(double x) {
     }
     g_last_result_angle = AngleUnit::NONE;
     return std::atanh(x);
+}
+
+inline double custom_acoth(double x) {
+    if (std::abs(x) <= 1.0) {
+        g_math_domain_err = "Domain Error: acoth(x) requires |x| > 1";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    g_last_result_angle = AngleUnit::NONE;
+    return std::atanh(1.0 / x);
+}
+
+inline double custom_asech(double x) {
+    if (x <= 0.0 || x > 1.0) {
+        g_math_domain_err = "Domain Error: asech(x) requires 0 < x <= 1";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    g_last_result_angle = AngleUnit::NONE;
+    return std::acosh(1.0 / x);
+}
+
+inline double custom_acsch(double x) {
+    if (x == 0.0) {
+        g_math_domain_err = "Domain Error: acsch(x) requires x != 0";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    g_last_result_angle = AngleUnit::NONE;
+    return std::asinh(1.0 / x);
 }
 
 // Custom math functions with domain validation

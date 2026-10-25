@@ -97,7 +97,16 @@ std::vector<std::string> autocomplete_words = {
     "fact(", "C(", "P(", "gcd(", "lcm(", "fib(",
     "print(", "run(", "conv(", "help(", "help()", "const ", "def ", "fn ",
     "pi", "e", "phi",
-    "plot(", "plot.show()", "plot.close()", "plot.hold(", "plot.xlim(", "plot.ylim("
+    "plot(", "plot.show()", "plot.close()", "plot.hold(", "plot.xlim(", "plot.ylim(",
+    "tg(", "ctg(", "sec(", "csc(", "cosec(",
+    "atg(", "arctg(", "acot(", "arccot(", "actg(", "arcctg(", "actan(", "arcctan(",
+    "asec(", "arcsec(", "acsc(", "arccsc(", "acosec(", "arccosec(",
+    "sh(", "ch(", "th(",
+    "coth(", "cth(", "ctgh(", "ctanh(", "sech(", "sch(", "csch(", "cosech(",
+    "arsh(", "arch(", "arth(", "artg(", "arctgh(",
+    "acoth(", "ahcot(", "arccoth(", "arcoth(", "arcth(", "ahcoth(",
+    "asech(", "ahsec(", "arcsech(", "arsech(", "ahsech(",
+    "acsch(", "ahcsc(", "arccsch(", "arcsch(", "acosech(", "arccosec(", "ahcsch("
 };
 std::map<std::string, std::vector<double>> user_arrays;
 

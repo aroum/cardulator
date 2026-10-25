@@ -41,7 +41,16 @@ std::vector<std::string> autocomplete_words = {
     "fact(", "C(", "P(", "gcd(", "lcm(", "fib(",
     "print(", "run(", "conv(", "help(", "help()", "const ", "def ", "fn ",
     "pi", "e", "phi",
-    "plot(", "plot.show()", "plot.close()", "plot.hold(", "plot.xlim(", "plot.ylim("
+    "plot(", "plot.show()", "plot.close()", "plot.hold(", "plot.xlim(", "plot.ylim(",
+    "tg(", "ctg(", "sec(", "csc(", "cosec(",
+    "atg(", "arctg(", "acot(", "arccot(", "actg(", "arcctg(", "actan(", "arcctan(",
+    "asec(", "arcsec(", "acsc(", "arccsc(", "acosec(", "arccosec(",
+    "sh(", "ch(", "th(",
+    "coth(", "cth(", "ctgh(", "ctanh(", "sech(", "sch(", "csch(", "cosech(",
+    "arsh(", "arch(", "arth(", "artg(", "arctgh(",
+    "acoth(", "ahcot(", "arccoth(", "arcoth(", "arcth(", "ahcoth(",
+    "asech(", "ahsec(", "arcsech(", "arsech(", "ahsech(",
+    "acsch(", "ahcsc(", "arccsch(", "arcsch(", "acosech(", "arccosec(", "ahcsch("
 };
 bool degreesMode = true;
 bool auto_brackets = true;
@@ -68,7 +77,16 @@ void setUp(void) {
         "fact(", "C(", "P(", "gcd(", "lcm(", "fib(",
         "print(", "run(", "conv(", "help(", "help()", "const ", "def ", "fn ",
         "pi", "e", "phi",
-        "plot(", "plot.show()", "plot.close()", "plot.hold(", "plot.xlim(", "plot.ylim("
+        "plot(", "plot.show()", "plot.close()", "plot.hold(", "plot.xlim(", "plot.ylim(",
+        "tg(", "ctg(", "sec(", "csc(", "cosec(",
+        "atg(", "arctg(", "acot(", "arccot(", "actg(", "arcctg(", "actan(", "arcctan(",
+        "asec(", "arcsec(", "acsc(", "arccsc(", "acosec(", "arccosec(",
+        "sh(", "ch(", "th(",
+        "coth(", "cth(", "ctgh(", "ctanh(", "sech(", "sch(", "csch(", "cosech(",
+        "arsh(", "arch(", "arth(", "artg(", "arctgh(",
+        "acoth(", "ahcot(", "arccoth(", "arcoth(", "arcth(", "ahcoth(",
+        "asech(", "ahsec(", "arcsech(", "arsech(", "ahsech(",
+        "acsch(", "ahcsc(", "arccsch(", "arcsch(", "acosech(", "arccosec(", "ahcsch("
     };
     degreesMode = true;
     auto_brackets = true;
@@ -251,6 +269,86 @@ void test_degrees_trig(void) {
     double res_arcsin = evaluate("arcsin(0.5)", err);
     TEST_ASSERT_TRUE(err.empty());
     TEST_ASSERT_FLOAT_WITHIN(1e-4, 30.0, res_arcsin);
+
+    double res_tg = evaluate("tg(45)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 1.0, res_tg);
+
+    double res_ctg = evaluate("ctg(45)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 1.0, res_ctg);
+
+    double res_sec = evaluate("sec(60)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 2.0, res_sec);
+
+    double res_csc = evaluate("csc(30)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 2.0, res_csc);
+
+    double res_cosec = evaluate("cosec(30)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 2.0, res_cosec);
+
+    double res_arctg = evaluate("arctg(1)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 45.0, res_arctg);
+
+    double res_arcctg = evaluate("arcctg(1)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 45.0, res_arcctg);
+
+    double res_arcsec = evaluate("arcsec(2)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 60.0, res_arcsec);
+
+    double res_arccsc = evaluate("arccsc(2)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 30.0, res_arccsc);
+
+    double res_arccosec = evaluate("arccosec(2)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 30.0, res_arccosec);
+
+    double res_sh = evaluate("sh(0)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(0.0, res_sh);
+
+    double res_ch = evaluate("ch(0)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(1.0, res_ch);
+
+    double res_th = evaluate("th(0)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(0.0, res_th);
+
+    double res_sech = evaluate("sech(0)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_EQUAL_FLOAT(1.0, res_sech);
+
+    double res_coth = evaluate("coth(1.5)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 1.0 / std::tanh(1.5), res_coth);
+
+    double res_csch = evaluate("csch(1.5)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 1.0 / std::sinh(1.5), res_csch);
+
+    double res_acoth = evaluate("acoth(coth(1.5))", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 1.5, res_acoth);
+
+    double res_asech = evaluate("asech(sech(0.5))", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 0.5, res_asech);
+
+    double res_acsch = evaluate("acsch(csch(1.5))", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 1.5, res_acsch);
+
+    double res_arccosech = evaluate("arccosech(csch(1.5))", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4, 1.5, res_arccosech);
 
     double res_acosh = evaluate("acosh(cosh(2.0))", err);
     TEST_ASSERT_TRUE(err.empty());
