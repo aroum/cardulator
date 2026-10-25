@@ -72,13 +72,26 @@ Physical keys `,` `/` `;` `.` type their literal characters by default. Navigati
 - Exponentiation `^` (e.g., `2^10` $\rightarrow$ `1024`). Supports fractional exponents (`8^(1/3)` $\rightarrow$ `2`).
 - Negation `-x` and unary plus `+x`.
 
-### 2. Trigonometry (Degree & Radian Mode)
+### 2. Trigonometry & Hyperbolic Functions (Degree & Radian Mode)
 
-Default angular unit is **Degrees**.
+Default angular unit is **Degrees** (toggleable to **Radians** via `Fn + W` or in Settings). See detailed technical documentation in [docs/trigonometry_and_errors.md](docs/trigonometry_and_errors.md).
 
-- `sin(x)`, `cos(x)`, `tan(x)`, `ctan(x)` — Standard trigonometric functions (takes degrees).
-- `asin(x)`, `acos(x)`, `atan(x)` — Inverse trigonometric functions (returns degrees).
-- Radians conversions: `deg2rad(x)` (or `d2r(x)`), `rad2deg(x)` (or `r2d(x)`).
+- **Standard Trigonometric**: `sin(x)`, `cos(x)`, `tan(x)` (or `tg`), `cot(x)` (or `ctg`, `ctan`), `sec(x)`, `csc(x)` (or `cosec`). Respects active Deg/Rad mode.
+- **Inverse Trigonometric**: `asin(x)` (or `arcsin`), `acos(x)` (or `arccos`), `atan(x)` (or `arctg`, `atg`), `acot(x)` (or `arcctg`, `arccot`), `asec(x)` (or `arcsec`), `acsc(x)` (or `arccsc`, `arccosec`). Returns angle in active mode with unit tag (e.g. `45 (deg)`).
+- **Hyperbolic**: `sinh(x)` (or `sh`), `cosh(x)` (or `ch`), `tanh(x)` (or `th`), `coth(x)` (or `cth`), `sech(x)` (or `sch`), `csch(x)` (or `cosech`).
+- **Inverse Hyperbolic**: `asinh(x)` (or `arsh`, `ahsin`), `acosh(x)` (or `arch`, `ahcos`), `atanh(x)` (or `arth`, `ahtan`), `acoth(x)` (or `ahcot`), `asech(x)` (or `ahsec`), `acsch(x)` (or `ahcsc`).
+- **Angle Conversion Helpers**: `deg2rad(x)` (or `d2r(x)`), `rad2deg(x)` (or `r2d(x)`).
+- **Vectorized Array Support**: All functions apply element-wise to 1D arrays, e.g. `sin([0, 30, 90])` $\rightarrow$ `[0, 0.5, 1]`.
+- **Descriptive Domain & Singularity Errors**:
+  - `asin(x)` / `acos(x)`: requires $-1 \le x \le 1$
+  - `asec(x)` / `acsc(x)`: requires $|x| \ge 1$
+  - `acosh(x)`: requires $x \ge 1$
+  - `atanh(x)`: requires $-1 < x < 1$
+  - `acoth(x)`: requires $|x| > 1$
+  - `asech(x)`: requires $0 < x \le 1$
+  - `coth(x)` / `csch(x)` / `acsch(x)`: requires $x \ne 0$
+  - `sec(x)` / `tan(x)`: undefined when $\cos(x) = 0$ (e.g. `sec(90)` in degrees mode)
+  - `csc(x)` / `cot(x)`: undefined when $\sin(x) = 0$ (e.g. `cot(0)` in degrees mode)
 
 ### 3. Logarithms & Exponential Functions
 

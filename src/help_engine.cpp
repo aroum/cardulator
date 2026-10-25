@@ -6,13 +6,16 @@ bool preprocessHelp(const std::string& s, std::string& help_out) {
     trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
     if (trimmed == "help()" || trimmed == "help" || trimmed == "help( )") {
         help_out = "=== Cardulator Help ===\n"
-                   "Trig: sin, cos, tan, ctan, asin, acos, atan\n"
+                   "Trig: sin, cos, tan, cot, sec, csc, tg, ctg\n"
+                   "Arc-Trig: asin, acos, atan, acot, asec, acsc\n"
+                   "Hyperbolic: sinh, cosh, tanh, coth, sech, csch\n"
+                   "Arc-Hyp: asinh, acosh, atanh, acoth, asech, acsch\n"
                    "Math: sqrt, cbrt, exp, ln, log, log2, logb, abs, mod\n"
                    "Round: ceil, floor, round, trunc, sgn\n"
                    "Stats: mean, median, var, std, rUni, rNor\n"
                    "Combinatorics: fact, C, P, gcd, lcm, fib\n"
                    "Units & System: conv, len, print, plot, help\n"
-                   "Tip: type help(name) e.g. help(conv) or help(units)";
+                   "Tip: type help(name) e.g. help(trig) or help(errors)";
         return true;
     }
     if (trimmed.rfind("help(", 0) == 0 && trimmed.back() == ')') {
@@ -73,13 +76,43 @@ bool preprocessHelp(const std::string& s, std::string& help_out) {
             help_out = "=== len() Help ===\n"
                        "len(vector) : returns element count of vector/array";
         }
-        else if (target == "sin" || target == "cos" || target == "tan" || target == "ctan") {
-            help_out = target + "(x) : Trigonometric function\n"
-                       "Respects Deg/Rad mode toggle";
+        else if (target == "sin" || target == "cos" || target == "tan" || target == "tg" || target == "ctan" || target == "cot" || target == "ctg" || target == "sec" || target == "csc" || target == "cosec" || target == "trig") {
+            help_out = "=== Trigonometric Functions ===\n"
+                       "sin(x), cos(x), tan(x)/tg(x), cot(x)/ctg(x), sec(x), csc(x)/cosec(x)\n"
+                       "Respects Deg/Rad mode toggle.\n"
+                       "Singularities: tan/sec (cos!=0), cot/csc (sin!=0)";
         }
-        else if (target == "asin" || target == "acos" || target == "atan") {
-            help_out = target + "(x) : Inverse trigonometric function\n"
-                       "Returns angle in current Deg/Rad mode";
+        else if (target == "asin" || target == "arcsin" || target == "acos" || target == "arccos" || target == "atan" || target == "arctan" || target == "atg" || target == "arctg" || target == "acot" || target == "arccot" || target == "actg" || target == "arcctg" || target == "asec" || target == "arcsec" || target == "acsc" || target == "arccsc" || target == "acosec" || target == "arccosec" || target == "arctrig") {
+            help_out = "=== Inverse Trigonometric Functions ===\n"
+                       "asin(x), acos(x), atan(x)/arctg(x), acot(x)/arcctg(x), asec(x), acsc(x)\n"
+                       "Returns angle in current Deg/Rad mode.\n"
+                       "Domains: asin/acos [-1, 1], asec/acsc |x| >= 1";
+        }
+        else if (target == "sinh" || target == "sh" || target == "cosh" || target == "ch" || target == "tanh" || target == "th" || target == "coth" || target == "cth" || target == "ctgh" || target == "sech" || target == "sch" || target == "csch" || target == "cosech" || target == "hyperbolic") {
+            help_out = "=== Hyperbolic Functions ===\n"
+                       "sinh(x)/sh(x), cosh(x)/ch(x), tanh(x)/th(x), coth(x), sech(x), csch(x)\n"
+                       "Real domain operations, independent of Deg/Rad mode.\n"
+                       "Singularities: coth(x) and csch(x) require x != 0";
+        }
+        else if (target == "asinh" || target == "ahsin" || target == "arsh" || target == "acosh" || target == "ahcos" || target == "arch" || target == "atanh" || target == "ahtan" || target == "arth" || target == "acoth" || target == "ahcot" || target == "arcth" || target == "asech" || target == "ahsec" || target == "ahsech" || target == "acsch" || target == "ahcsc" || target == "ahcsch" || target == "archyp") {
+            help_out = "=== Inverse Hyperbolic Functions ===\n"
+                       "asinh(x)/arsh(x), acosh(x)/arch(x), atanh(x)/arth(x), acoth(x), asech(x), acsch(x)\n"
+                       "Domains: acosh (x >= 1), atanh (-1 < x < 1), acoth (|x| > 1), asech (0 < x <= 1), acsch (x != 0)";
+        }
+        else if (target == "errors" || target == "domain") {
+            help_out = "=== Domain Errors Reference ===\n"
+                       "asin/acos : -1 <= x <= 1\n"
+                       "asec/acsc : |x| >= 1\n"
+                       "tan/sec   : undefined when cos(x) = 0\n"
+                       "cot/csc   : undefined when sin(x) = 0\n"
+                       "acosh     : x >= 1\n"
+                       "atanh     : -1 < x < 1\n"
+                       "acoth     : |x| > 1\n"
+                       "asech     : 0 < x <= 1\n"
+                       "coth/csch/acsch: x != 0\n"
+                       "sqrt      : x >= 0\n"
+                       "ln/log    : x > 0\n"
+                       "fact      : n >= 0";
         }
         else if (target == "deg2rad" || target == "d2r" || target == "rad2deg" || target == "r2d") {
             help_out = "deg2rad(deg) / d2r(deg) : Convert degrees to radians\n"
