@@ -191,6 +191,30 @@ void test_degrees_trig(void) {
     TEST_ASSERT_EQUAL_FLOAT(M_PI / 4.0, res_atan2_rad);
     degreesMode = true; // Restore
 
+    // Angle tracking verification
+    degreesMode = true;
+    evaluate("asin(0.5)", err);
+    TEST_ASSERT_TRUE(g_last_result_angle == AngleUnit::DEG);
+
+    degreesMode = false;
+    evaluate("asin(0.5)", err);
+    TEST_ASSERT_TRUE(g_last_result_angle == AngleUnit::RAD);
+    degreesMode = true;
+
+    evaluate("deg2rad(180)", err);
+    TEST_ASSERT_TRUE(g_last_result_angle == AngleUnit::RAD);
+
+    evaluate("rad2deg(pi)", err);
+    TEST_ASSERT_TRUE(g_last_result_angle == AngleUnit::DEG);
+
+    evaluate("sin(30)", err);
+    TEST_ASSERT_TRUE(g_last_result_angle == AngleUnit::NONE);
+
+    bool is_def_test = false;
+    evaluateInput("my_ang = asin(0.5)", err, is_def_test);
+    TEST_ASSERT_TRUE(is_def_test && err.empty());
+    TEST_ASSERT_TRUE(g_last_result_angle == AngleUnit::DEG);
+
     // 5. Hyperbolic functions & Inverse Hyperbolic functions
     double res_sinh0 = evaluate("sinh(0)", err);
     TEST_ASSERT_TRUE(err.empty());

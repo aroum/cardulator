@@ -9,15 +9,16 @@
 #include "app_state.h"
 
 // Custom function wrappers for Degrees/Radians mode and domain validation
-inline double custom_sin(double x) { return degreesMode ? std::sin(x * M_PI / 180.0) : std::sin(x); }
-inline double custom_cos(double x) { return degreesMode ? std::cos(x * M_PI / 180.0) : std::cos(x); }
-inline double custom_tan(double x) { return degreesMode ? std::tan(x * M_PI / 180.0) : std::tan(x); }
+inline double custom_sin(double x) { g_last_result_angle = AngleUnit::NONE; return degreesMode ? std::sin(x * M_PI / 180.0) : std::sin(x); }
+inline double custom_cos(double x) { g_last_result_angle = AngleUnit::NONE; return degreesMode ? std::cos(x * M_PI / 180.0) : std::cos(x); }
+inline double custom_tan(double x) { g_last_result_angle = AngleUnit::NONE; return degreesMode ? std::tan(x * M_PI / 180.0) : std::tan(x); }
 
 inline double custom_asin(double x) {
     if (x < -1.0 || x > 1.0) {
         g_math_domain_err = "Domain Error: asin(x) requires -1 <= x <= 1";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = degreesMode ? AngleUnit::DEG : AngleUnit::RAD;
     return degreesMode ? std::asin(x) * 180.0 / M_PI : std::asin(x);
 }
 
@@ -26,25 +27,33 @@ inline double custom_acos(double x) {
         g_math_domain_err = "Domain Error: acos(x) requires -1 <= x <= 1";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = degreesMode ? AngleUnit::DEG : AngleUnit::RAD;
     return degreesMode ? std::acos(x) * 180.0 / M_PI : std::acos(x);
 }
 
-inline double custom_atan(double x) { return degreesMode ? std::atan(x) * 180.0 / M_PI : std::atan(x); }
-inline double custom_atan2(double y, double x) { return degreesMode ? std::atan2(y, x) * 180.0 / M_PI : std::atan2(y, x); }
-inline double custom_ctan(double x) { return 1.0 / custom_tan(x); }
-inline double custom_cot(double x) { return custom_ctan(x); }
+inline double custom_atan(double x) {
+    g_last_result_angle = degreesMode ? AngleUnit::DEG : AngleUnit::RAD;
+    return degreesMode ? std::atan(x) * 180.0 / M_PI : std::atan(x);
+}
+inline double custom_atan2(double y, double x) {
+    g_last_result_angle = degreesMode ? AngleUnit::DEG : AngleUnit::RAD;
+    return degreesMode ? std::atan2(y, x) * 180.0 / M_PI : std::atan2(y, x);
+}
+inline double custom_ctan(double x) { g_last_result_angle = AngleUnit::NONE; return 1.0 / custom_tan(x); }
+inline double custom_cot(double x) { g_last_result_angle = AngleUnit::NONE; return custom_ctan(x); }
 
 // Hyperbolic functions (independent of Degrees/Radians mode)
-inline double custom_sinh(double x) { return std::sinh(x); }
-inline double custom_cosh(double x) { return std::cosh(x); }
-inline double custom_tanh(double x) { return std::tanh(x); }
-inline double custom_asinh(double x) { return std::asinh(x); }
+inline double custom_sinh(double x) { g_last_result_angle = AngleUnit::NONE; return std::sinh(x); }
+inline double custom_cosh(double x) { g_last_result_angle = AngleUnit::NONE; return std::cosh(x); }
+inline double custom_tanh(double x) { g_last_result_angle = AngleUnit::NONE; return std::tanh(x); }
+inline double custom_asinh(double x) { g_last_result_angle = AngleUnit::NONE; return std::asinh(x); }
 
 inline double custom_acosh(double x) {
     if (x < 1.0) {
         g_math_domain_err = "Domain Error: acosh(x) requires x >= 1";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = AngleUnit::NONE;
     return std::acosh(x);
 }
 
@@ -53,6 +62,7 @@ inline double custom_atanh(double x) {
         g_math_domain_err = "Domain Error: atanh(x) requires -1 < x < 1";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = AngleUnit::NONE;
     return std::atanh(x);
 }
 
@@ -62,6 +72,7 @@ inline double custom_sqrt(double x) {
         g_math_domain_err = "Domain Error: sqrt(x) requires x >= 0";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = AngleUnit::NONE;
     return std::sqrt(x);
 }
 
@@ -70,17 +81,25 @@ inline double custom_ln(double x) {
         g_math_domain_err = "Domain Error: ln(x) requires x > 0";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = AngleUnit::NONE;
     return std::log(x);
 }
 
-inline double custom_deg2rad(double deg) { return deg * M_PI / 180.0; }
-inline double custom_rad2deg(double rad) { return rad * 180.0 / M_PI; }
+inline double custom_deg2rad(double deg) {
+    g_last_result_angle = AngleUnit::RAD;
+    return deg * M_PI / 180.0;
+}
+inline double custom_rad2deg(double rad) {
+    g_last_result_angle = AngleUnit::DEG;
+    return rad * 180.0 / M_PI;
+}
 
 inline double custom_log10(double x) {
     if (x <= 0.0) {
         g_math_domain_err = "Domain Error: log(x) requires x > 0";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = AngleUnit::NONE;
     return std::log10(x);
 }
 
@@ -89,6 +108,7 @@ inline double custom_log2(double x) {
         g_math_domain_err = "Domain Error: log2(x) requires x > 0";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = AngleUnit::NONE;
     return std::log2(x);
 }
 
@@ -97,19 +117,21 @@ inline double custom_logb(double b, double x) {
         g_math_domain_err = "Domain Error: logb(b, x) requires b > 0, b != 1, x > 0";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = AngleUnit::NONE;
     return std::log(x) / std::log(b);
 }
 
-inline double custom_mod(double x, double y) { return std::fmod(x, y); }
-inline double custom_sgn(double x) { return (x > 0.0) - (x < 0.0); }
-inline double custom_trunc(double x) { return std::trunc(x); }
-inline double custom_abs(double x) { return std::abs(x); }
+inline double custom_mod(double x, double y) { g_last_result_angle = AngleUnit::NONE; return std::fmod(x, y); }
+inline double custom_sgn(double x) { g_last_result_angle = AngleUnit::NONE; return (x > 0.0) - (x < 0.0); }
+inline double custom_trunc(double x) { g_last_result_angle = AngleUnit::NONE; return std::trunc(x); }
+inline double custom_abs(double x) { g_last_result_angle = AngleUnit::NONE; return std::abs(x); }
 
 inline double custom_fact(double n) {
     if (n < 0.0) {
         g_math_domain_err = "Domain Error: fact(n) requires n >= 0";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = AngleUnit::NONE;
     double res = 1.0;
     for (int i = 2; i <= (int)n; ++i) res *= i;
     return res;
@@ -120,6 +142,7 @@ inline double custom_C(double n, double k) {
         g_math_domain_err = "Domain Error: C(n, k) requires 0 <= k <= n";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = AngleUnit::NONE;
     return custom_fact(n) / (custom_fact(k) * custom_fact(n - k));
 }
 
@@ -128,14 +151,17 @@ inline double custom_P(double n, double k) {
         g_math_domain_err = "Domain Error: P(n, k) requires 0 <= k <= n";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = AngleUnit::NONE;
     return custom_fact(n) / custom_fact(n - k);
 }
 #include <numeric>
 
 inline double custom_gcd(double a, double b) {
+    g_last_result_angle = AngleUnit::NONE;
     return (double)std::gcd((int64_t)std::abs((int64_t)a), (int64_t)std::abs((int64_t)b));
 }
 inline double custom_lcm(double a, double b) {
+    g_last_result_angle = AngleUnit::NONE;
     return (double)std::lcm((int64_t)std::abs((int64_t)a), (int64_t)std::abs((int64_t)b));
 }
 inline double custom_fib(double n) {
@@ -144,6 +170,7 @@ inline double custom_fib(double n) {
         g_math_domain_err = "Domain Error: fib(n) requires n >= 0";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    g_last_result_angle = AngleUnit::NONE;
     if (val == 0) return 0;
     if (val == 1) return 1;
     double a = 0, b = 1;
@@ -156,12 +183,14 @@ inline double custom_fib(double n) {
 }
 
 inline double custom_rUni(double min_v, double max_v) {
+    g_last_result_angle = AngleUnit::NONE;
     static std::random_device rd;
     static std::mt19937 gen(rd());
     std::uniform_real_distribution<> dis(min_v, max_v);
     return dis(gen);
 }
 inline double custom_rNor(double mean, double stddev) {
+    g_last_result_angle = AngleUnit::NONE;
     static std::random_device rd;
     static std::mt19937 gen(rd());
     std::normal_distribution<> dis(mean, stddev);
@@ -251,6 +280,7 @@ inline double variadic_mode(
 }
 
 inline double custom_dot(double a, double b) {
+    g_last_result_angle = AngleUnit::NONE;
     return a * b;
 }
 

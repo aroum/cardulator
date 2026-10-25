@@ -2603,6 +2603,9 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
                     } else {
                         user_args.push_back({assign_var1, c_res.value});
                     }
+                    if (std::find(autocomplete_words.begin(), autocomplete_words.end(), assign_var1) == autocomplete_words.end()) {
+                        autocomplete_words.push_back(assign_var1);
+                    }
                 }
 
                 if (!assign_var2.empty()) {
@@ -2708,6 +2711,11 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
                 history_index = expr_history.size();
                 if (!last_is_def) {
                     resultStr = fmtNum(last_res);
+                    if (g_last_result_angle == AngleUnit::DEG) {
+                        resultStr += " (deg)";
+                    } else if (g_last_result_angle == AngleUnit::RAD) {
+                        resultStr += " (rad)";
+                    }
                     pushResultHistory(last_res, "e" + std::to_string(history.size()) + " = " + resultStr);
                 } else {
                     pushResultHistory(std::numeric_limits<double>::quiet_NaN(), resultStr);
@@ -2738,6 +2746,11 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
                         resultStr = lhs + " = Array[" + std::to_string(user_arrays[lhs].size()) + "]";
                     } else {
                         resultStr = lhs + " = " + fmtNum(result);
+                        if (g_last_result_angle == AngleUnit::DEG) {
+                            resultStr += " (deg)";
+                        } else if (g_last_result_angle == AngleUnit::RAD) {
+                            resultStr += " (rad)";
+                        }
                     }
                     pushResultHistory(std::numeric_limits<double>::quiet_NaN(), resultStr);
                 } else {
@@ -2766,8 +2779,18 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
                 
                 if (!label.empty()) {
                     resultStr = label + " = " + fmtNum(result);
+                    if (g_last_result_angle == AngleUnit::DEG) {
+                        resultStr += " (deg)";
+                    } else if (g_last_result_angle == AngleUnit::RAD) {
+                        resultStr += " (rad)";
+                    }
                 } else {
                     resultStr = "e" + std::to_string(history.size() + 1) + " = " + fmtNum(result);
+                    if (g_last_result_angle == AngleUnit::DEG) {
+                        resultStr += " (deg)";
+                    } else if (g_last_result_angle == AngleUnit::RAD) {
+                        resultStr += " (rad)";
+                    }
                 }
                 pushResultHistory(result, resultStr);
             }
@@ -4236,6 +4259,8 @@ static void handleFormulasKey(Keyboard_Class::KeysState& s) {
                     }
                     if (!args_fmt.empty()) args_fmt.pop_back();
                     std::string res_text = f.name + "(" + args_fmt + ") = " + fmtNum(result);
+                    if (g_last_result_angle == AngleUnit::DEG) res_text += " (deg)";
+                    else if (g_last_result_angle == AngleUnit::RAD) res_text += " (rad)";
                     pushExprHistory(f.name);
                     pushResultHistory(result, res_text);
                     resultStr = res_text;
@@ -4336,6 +4361,8 @@ static void handleFormulasKey(Keyboard_Class::KeysState& s) {
                         hasError = true;
                     } else {
                         std::string res_text = f.name + " = " + fmtNum(result);
+                        if (g_last_result_angle == AngleUnit::DEG) res_text += " (deg)";
+                        else if (g_last_result_angle == AngleUnit::RAD) res_text += " (rad)";
                         pushExprHistory(f.name);
                         pushResultHistory(result, res_text);
                         resultStr = res_text;

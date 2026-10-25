@@ -903,6 +903,7 @@ std::string preprocessVectorStats(const std::string& s) {
 double evaluate(const std::string& expr_str, std::string& err) {
     err = "";
     g_math_domain_err = "";
+    g_last_result_angle = AngleUnit::NONE;
     std::string help_str;
     if (preprocessHelp(expr_str, help_str)) {
         err = help_str;
@@ -1055,6 +1056,7 @@ double evaluateWithoutHistory(const std::string& expr_str, std::string& err) {
 
 double evaluateInput(const std::string& expr_str, std::string& err, bool& isDefinition) {
     isDefinition = false;
+    g_last_result_angle = AngleUnit::NONE;
     
     size_t eq_pos = expr_str.find('=');
     if (eq_pos != std::string::npos && 
@@ -1260,16 +1262,42 @@ static std::string g_tab_orig_prefix = "";
 static size_t g_tab_comp_start = 0;
 static int g_tab_match_idx = -1;
 static std::string g_tab_last_inserted = "";
+static std::vector<std::string> g_tab_cached_matches;
 
-static std::vector<std::string> get_unit_dimensions(const std::string& raw_unit) {
+enum UnitDimension : uint32_t {
+    DIM_NONE         = 0,
+    DIM_LENGTH       = 1 << 0,
+    DIM_AREA_WIRE    = 1 << 1,
+    DIM_VOLUME       = 1 << 2,
+    DIM_PRESSURE     = 1 << 3,
+    DIM_RESISTANCE   = 1 << 4,
+    DIM_CAPACITANCE  = 1 << 5,
+    DIM_INDUCTANCE   = 1 << 6,
+    DIM_CURRENT      = 1 << 7,
+    DIM_VOLTAGE      = 1 << 8,
+    DIM_POWER        = 1 << 9,
+    DIM_DB_RATIO     = 1 << 10,
+    DIM_FREQUENCY    = 1 << 11,
+    DIM_MASS         = 1 << 12,
+    DIM_TIME         = 1 << 13,
+    DIM_SPEED        = 1 << 14,
+    DIM_ACCELERATION = 1 << 15,
+    DIM_ENERGY       = 1 << 16,
+    DIM_FORCE        = 1 << 17,
+    DIM_TEMPERATURE  = 1 << 18,
+    DIM_ANGLE        = 1 << 19,
+    DIM_EM           = 1 << 20,
+};
+
+static uint32_t get_unit_dimension_mask(const std::string& raw_unit) {
     std::string u = raw_unit;
     size_t first = u.find_first_not_of(" \t\"'");
-    if (first == std::string::npos) return {};
+    if (first == std::string::npos) return DIM_NONE;
     size_t last = u.find_last_not_of(" \t\"'");
     u = u.substr(first, last - first + 1);
     std::transform(u.begin(), u.end(), u.begin(), ::tolower);
 
-    std::vector<std::string> dims;
+    uint32_t dims = DIM_NONE;
     auto in_set = [&](const std::initializer_list<const char*>& items) {
         for (const char* it : items) {
             if (u == it) return true;
@@ -1278,87 +1306,151 @@ static std::vector<std::string> get_unit_dimensions(const std::string& raw_unit)
     };
 
     if (in_set({"mm", "m", "meter", "meters", "cm", "km", "mile", "miles", "yard", "yards", "foot", "feet", "inch", "inches", "in", "ft", "yd", "nauticalmile", "angstrom", "au"})) {
-        dims.push_back("length");
+        dims |= DIM_LENGTH;
     }
     if (in_set({"mm^2", "mm2", "std_mm2", "awg", "std_awg", "m^2", "m2", "cm^2", "cm2", "km^2", "km2", "hectare", "acre", "acres", "sqft", "sqin"})) {
-        dims.push_back("area_wire");
+        dims |= DIM_AREA_WIRE;
     }
     if (in_set({"m^3", "m3", "cm^3", "cm3", "liter", "liters", "litre", "litres", "l", "ml", "dl", "cl", "gal", "gallon", "gallons", "quart", "quarts", "pint", "pints", "cup", "cups", "floz", "tbsp", "tsp", "barrel"})) {
-        dims.push_back("volume");
+        dims |= DIM_VOLUME;
     }
     if (in_set({"mmhg", "torr", "atm", "bar", "mbar", "pa", "pascal", "kpa", "mpa", "gpa", "psi", "psf", "inhg"})) {
-        dims.push_back("pressure");
+        dims |= DIM_PRESSURE;
     }
     if (in_set({"ohm", "ohms", "mohm", "kohm", "smd3", "smd4", "eia96"})) {
-        dims.push_back("resistance");
+        dims |= DIM_RESISTANCE;
     } else if (!u.empty()) {
         bool all_digits = std::all_of(u.begin(), u.end(), ::isdigit);
         if ((u.size() == 3 || u.size() == 4) && all_digits) {
-            dims.push_back("resistance");
+            dims |= DIM_RESISTANCE;
         } else if (u.find('r') != std::string::npos || u.find('k') != std::string::npos) {
             bool is_rkm = true;
             for (char c : u) {
                 if (!std::isdigit((unsigned char)c) && c != 'r' && c != 'k') { is_rkm = false; break; }
             }
-            if (is_rkm) dims.push_back("resistance");
+            if (is_rkm) dims |= DIM_RESISTANCE;
         }
     }
     if (in_set({"farad", "f", "uf", "nf", "pf"})) {
-        dims.push_back("capacitance");
+        dims |= DIM_CAPACITANCE;
     }
     if (in_set({"henry", "h", "uh", "mh", "nh"})) {
-        dims.push_back("inductance");
+        dims |= DIM_INDUCTANCE;
     }
     if (in_set({"ampere", "amp", "amps", "a", "ma", "ua", "ka"})) {
-        dims.push_back("current");
+        dims |= DIM_CURRENT;
     }
     if (in_set({"volt", "volts", "v", "mv", "uv", "kv", "dbv", "dbmv", "dbuv", "dbu"})) {
-        dims.push_back("voltage");
+        dims |= DIM_VOLTAGE;
     }
     if (in_set({"watt", "watts", "w", "mw", "uw", "kw", "gw", "hp", "horsepower", "dbm", "dbw"})) {
-        dims.push_back("power");
+        dims |= DIM_POWER;
     }
     if (in_set({"db", "times", "ratio", "dbm", "dbw", "dbv", "dbmv", "dbuv", "dbu"})) {
-        dims.push_back("db_ratio");
+        dims |= DIM_DB_RATIO;
     }
     if (in_set({"hz", "khz", "mhz", "ghz"})) {
-        dims.push_back("frequency");
+        dims |= DIM_FREQUENCY;
     }
     if (in_set({"kg", "kilogram", "kilograms", "g", "gram", "grams", "mg", "ug", "ton", "tonne", "tonnes", "lb", "pound", "pounds", "oz", "ounce", "ounces", "stone", "carat"})) {
-        dims.push_back("mass");
+        dims |= DIM_MASS;
     }
     if (in_set({"s", "sec", "second", "seconds", "ms", "us", "ns", "min", "minute", "minutes", "hr", "hour", "hours", "day", "days", "week", "weeks", "month", "months", "year", "years"})) {
-        dims.push_back("time");
+        dims |= DIM_TIME;
     }
     if (in_set({"m/s", "km/hr", "km/h", "kph", "mph", "knot", "knots", "mach"})) {
-        dims.push_back("speed");
+        dims |= DIM_SPEED;
     }
     if (in_set({"m/s^2", "m/s2", "cm/s^2", "cm/s2", "km/s^2", "km/s2", "km/h^2", "km/h2", "km/hr^2", "km/hr2", "ft/s^2", "ft/s2", "fps2", "in/s^2", "in/s2", "gal", "g0", "gee", "gravity", "g"})) {
-        dims.push_back("acceleration");
+        dims |= DIM_ACCELERATION;
     }
     if (in_set({"joule", "joules", "j", "kj", "mj", "cal", "calorie", "calories", "kcal", "ev", "kev", "mev", "gev", "wh", "kwh", "mwh", "btu"})) {
-        dims.push_back("energy");
+        dims |= DIM_ENERGY;
     }
     if (in_set({"newton", "newtons", "n", "kn", "dyn", "dyne", "lbf", "kgf"})) {
-        dims.push_back("force");
+        dims |= DIM_FORCE;
     }
     if (in_set({"degc", "degf", "kelvin", "k"})) {
-        dims.push_back("temperature");
+        dims |= DIM_TEMPERATURE;
     }
     if (in_set({"deg", "degree", "degrees", "rad", "radian", "radians"})) {
-        dims.push_back("angle");
+        dims |= DIM_ANGLE;
     }
     if (in_set({"coulomb", "tesla", "weber"})) {
-        dims.push_back("em");
+        dims |= DIM_EM;
     }
     return dims;
 }
+
+struct ConvUnitCandidate {
+    const char* name;
+    uint32_t dims;
+};
+
+static const ConvUnitCandidate conv_units[] = {
+    {"mm", DIM_LENGTH}, {"mmHg", DIM_PRESSURE}, {"mm^2", DIM_AREA_WIRE}, {"mm2", DIM_AREA_WIRE},
+    {"std_mm2", DIM_AREA_WIRE}, {"m", DIM_LENGTH}, {"meter", DIM_LENGTH}, {"cm", DIM_LENGTH},
+    {"km", DIM_LENGTH}, {"mile", DIM_LENGTH}, {"yard", DIM_LENGTH}, {"foot", DIM_LENGTH},
+    {"inch", DIM_LENGTH}, {"in", DIM_LENGTH}, {"ft", DIM_LENGTH}, {"yd", DIM_LENGTH},
+    {"m^2", DIM_AREA_WIRE}, {"m2", DIM_AREA_WIRE}, {"cm^2", DIM_AREA_WIRE}, {"cm2", DIM_AREA_WIRE},
+    {"km^2", DIM_AREA_WIRE}, {"km2", DIM_AREA_WIRE}, {"hectare", DIM_AREA_WIRE}, {"acre", DIM_AREA_WIRE},
+    {"m^3", DIM_VOLUME}, {"m3", DIM_VOLUME}, {"liter", DIM_VOLUME}, {"l", DIM_VOLUME},
+    {"ml", DIM_VOLUME}, {"dl", DIM_VOLUME}, {"cl", DIM_VOLUME}, {"gal", DIM_VOLUME},
+    {"gallon", DIM_VOLUME}, {"quart", DIM_VOLUME}, {"pint", DIM_VOLUME}, {"cup", DIM_VOLUME},
+    {"floz", DIM_VOLUME}, {"tbsp", DIM_VOLUME}, {"tsp", DIM_VOLUME}, {"barrel", DIM_VOLUME},
+    {"torr", DIM_PRESSURE}, {"atm", DIM_PRESSURE}, {"bar", DIM_PRESSURE}, {"mbar", DIM_PRESSURE},
+    {"Pa", DIM_PRESSURE}, {"pascal", DIM_PRESSURE}, {"kPa", DIM_PRESSURE}, {"MPa", DIM_PRESSURE},
+    {"GPa", DIM_PRESSURE}, {"psi", DIM_PRESSURE}, {"inHg", DIM_PRESSURE},
+    {"ohm", DIM_RESISTANCE}, {"mohm", DIM_RESISTANCE}, {"kohm", DIM_RESISTANCE}, {"Mohm", DIM_RESISTANCE},
+    {"smd3", DIM_RESISTANCE}, {"smd4", DIM_RESISTANCE}, {"eia96", DIM_RESISTANCE},
+    {"awg", DIM_AREA_WIRE}, {"std_awg", DIM_AREA_WIRE},
+    {"farad", DIM_CAPACITANCE}, {"F", DIM_CAPACITANCE}, {"uF", DIM_CAPACITANCE}, {"uf", DIM_CAPACITANCE},
+    {"nF", DIM_CAPACITANCE}, {"nf", DIM_CAPACITANCE}, {"pF", DIM_CAPACITANCE}, {"pf", DIM_CAPACITANCE},
+    {"henry", DIM_INDUCTANCE}, {"H", DIM_INDUCTANCE}, {"uH", DIM_INDUCTANCE}, {"uh", DIM_INDUCTANCE},
+    {"mH", DIM_INDUCTANCE}, {"mh", DIM_INDUCTANCE}, {"nH", DIM_INDUCTANCE}, {"nh", DIM_INDUCTANCE},
+    {"ampere", DIM_CURRENT}, {"amp", DIM_CURRENT}, {"A", DIM_CURRENT}, {"mA", DIM_CURRENT},
+    {"uA", DIM_CURRENT}, {"kA", DIM_CURRENT},
+    {"volt", DIM_VOLTAGE}, {"V", DIM_VOLTAGE}, {"mV", DIM_VOLTAGE}, {"uV", DIM_VOLTAGE},
+    {"kV", DIM_VOLTAGE}, {"MV", DIM_VOLTAGE},
+    {"watt", DIM_POWER}, {"W", DIM_POWER}, {"mW", DIM_POWER}, {"uW", DIM_POWER},
+    {"kW", DIM_POWER}, {"MW", DIM_POWER}, {"GW", DIM_POWER}, {"hp", DIM_POWER},
+    {"Hz", DIM_FREQUENCY}, {"khz", DIM_FREQUENCY}, {"mhz", DIM_FREQUENCY}, {"ghz", DIM_FREQUENCY},
+    {"dB", DIM_DB_RATIO}, {"db", DIM_DB_RATIO},
+    {"dBm", DIM_POWER | DIM_DB_RATIO}, {"dbm", DIM_POWER | DIM_DB_RATIO},
+    {"dBW", DIM_POWER | DIM_DB_RATIO}, {"dbw", DIM_POWER | DIM_DB_RATIO},
+    {"dBV", DIM_VOLTAGE | DIM_DB_RATIO}, {"dbv", DIM_VOLTAGE | DIM_DB_RATIO},
+    {"dBmV", DIM_VOLTAGE | DIM_DB_RATIO}, {"dbmv", DIM_VOLTAGE | DIM_DB_RATIO},
+    {"dBuV", DIM_VOLTAGE | DIM_DB_RATIO}, {"dbuv", DIM_VOLTAGE | DIM_DB_RATIO},
+    {"dBu", DIM_VOLTAGE | DIM_DB_RATIO}, {"dbu", DIM_VOLTAGE | DIM_DB_RATIO},
+    {"times", DIM_DB_RATIO}, {"ratio", DIM_DB_RATIO},
+    {"kg", DIM_MASS}, {"kilogram", DIM_MASS}, {"g", DIM_MASS}, {"gram", DIM_MASS},
+    {"mg", DIM_MASS}, {"ug", DIM_MASS}, {"ton", DIM_MASS}, {"tonne", DIM_MASS},
+    {"lb", DIM_MASS}, {"pound", DIM_MASS}, {"oz", DIM_MASS}, {"ounce", DIM_MASS},
+    {"s", DIM_TIME}, {"sec", DIM_TIME}, {"second", DIM_TIME}, {"ms", DIM_TIME},
+    {"us", DIM_TIME}, {"ns", DIM_TIME}, {"min", DIM_TIME}, {"minute", DIM_TIME},
+    {"hr", DIM_TIME}, {"hour", DIM_TIME}, {"day", DIM_TIME}, {"week", DIM_TIME},
+    {"month", DIM_TIME}, {"year", DIM_TIME},
+    {"m/s", DIM_SPEED}, {"km/hr", DIM_SPEED}, {"km/h", DIM_SPEED}, {"kph", DIM_SPEED},
+    {"mph", DIM_SPEED}, {"knot", DIM_SPEED}, {"mach", DIM_SPEED},
+    {"m/s^2", DIM_ACCELERATION}, {"cm/s^2", DIM_ACCELERATION}, {"km/s^2", DIM_ACCELERATION},
+    {"km/h^2", DIM_ACCELERATION}, {"ft/s^2", DIM_ACCELERATION}, {"in/s^2", DIM_ACCELERATION},
+    {"gal", DIM_ACCELERATION}, {"g0", DIM_ACCELERATION}, {"gee", DIM_ACCELERATION}, {"gravity", DIM_ACCELERATION},
+    {"joule", DIM_ENERGY}, {"J", DIM_ENERGY}, {"kJ", DIM_ENERGY}, {"MJ", DIM_ENERGY},
+    {"cal", DIM_ENERGY}, {"calorie", DIM_ENERGY}, {"kcal", DIM_ENERGY},
+    {"eV", DIM_ENERGY}, {"keV", DIM_ENERGY}, {"MeV", DIM_ENERGY}, {"GeV", DIM_ENERGY},
+    {"Wh", DIM_ENERGY}, {"kWh", DIM_ENERGY}, {"MWh", DIM_ENERGY}, {"BTU", DIM_ENERGY},
+    {"newton", DIM_FORCE}, {"N", DIM_FORCE}, {"kN", DIM_FORCE}, {"dyn", DIM_FORCE},
+    {"dyne", DIM_FORCE}, {"lbf", DIM_FORCE}, {"kgf", DIM_FORCE},
+    {"degC", DIM_TEMPERATURE}, {"degF", DIM_TEMPERATURE}, {"kelvin", DIM_TEMPERATURE}, {"K", DIM_TEMPERATURE},
+    {"deg", DIM_ANGLE}, {"degree", DIM_ANGLE}, {"rad", DIM_ANGLE}, {"radian", DIM_ANGLE}
+};
 
 void resetTabState() {
     g_tab_orig_prefix = "";
     g_tab_last_inserted = "";
     g_tab_comp_start = 0;
     g_tab_match_idx = -1;
+    g_tab_cached_matches.clear();
 }
 
 void handleTabCompletion(std::string& expression, int& cursor_pos) {
@@ -1377,7 +1469,30 @@ void handleTabCompletion(std::string& expression, int& cursor_pos) {
         }
     }
 
+    if (is_continuation && !g_tab_cached_matches.empty()) {
+        g_tab_match_idx = ((g_tab_match_idx + 1) % (int)g_tab_cached_matches.size() + (int)g_tab_cached_matches.size()) % (int)g_tab_cached_matches.size();
+        std::string matched_word = g_tab_cached_matches[g_tab_match_idx];
+
+        std::string new_inserted;
+        if (auto_brackets && !matched_word.empty() && matched_word.back() == '(') {
+            new_inserted = matched_word + ")";
+            cursor_pos = g_tab_comp_start + matched_word.size();
+        } else {
+            new_inserted = matched_word;
+            cursor_pos = g_tab_comp_start + new_inserted.size();
+        }
+
+        size_t current_len = g_tab_last_inserted.size();
+        if (g_tab_comp_start + current_len > expression.size()) {
+            current_len = expression.size() - g_tab_comp_start;
+        }
+        expression.replace(g_tab_comp_start, current_len, new_inserted);
+        g_tab_last_inserted = new_inserted;
+        return;
+    }
+
     if (!is_continuation) {
+        g_tab_cached_matches.clear();
         if (cursor_pos < 0 || cursor_pos > (int)expression.size()) cursor_pos = expression.size();
         size_t start = cursor_pos;
         while (start > 0 && (std::isalnum((unsigned char)expression[start - 1]) || expression[start - 1] == '_')) {
@@ -1450,29 +1565,7 @@ void handleTabCompletion(std::string& expression, int& cursor_pos) {
     }
 
     if (is_in_conv && left_ctx.substr(last_conv + 5).find(',') != std::string::npos) {
-        static const std::vector<std::string> conv_units = {
-            "mm", "mmHg", "mm^2", "mm2", "std_mm2", "m", "meter", "cm", "km", "mile", "yard", "foot", "inch", "in", "ft", "yd",
-            "m^2", "m2", "cm^2", "cm2", "km^2", "km2", "hectare", "acre",
-            "m^3", "m3", "liter", "l", "ml", "dl", "cl", "gal", "gallon", "quart", "pint", "cup", "floz", "tbsp", "tsp", "barrel",
-            "torr", "atm", "bar", "mbar", "Pa", "pascal", "kPa", "MPa", "GPa", "psi", "inHg",
-            "ohm", "mohm", "kohm", "Mohm", "smd3", "smd4", "eia96", "awg", "std_awg",
-            "farad", "F", "uF", "uf", "nF", "nf", "pF", "pf",
-            "henry", "H", "uH", "uh", "mH", "mh", "nH", "nh",
-            "ampere", "amp", "A", "mA", "uA", "kA",
-            "volt", "V", "mV", "uV", "kV", "MV",
-            "watt", "W", "mW", "uW", "kW", "MW", "GW", "hp",
-            "Hz", "khz", "mhz", "ghz",
-            "dB", "db", "dBm", "dbm", "dBW", "dbw", "dBV", "dbv", "dBmV", "dbmv", "dBuV", "dbuv", "dBu", "dbu", "times", "ratio",
-            "kg", "kilogram", "g", "gram", "mg", "ug", "ton", "tonne", "lb", "pound", "oz", "ounce",
-            "s", "sec", "second", "ms", "us", "ns", "min", "minute", "hr", "hour", "day", "week", "month", "year",
-            "m/s", "km/hr", "km/h", "kph", "mph", "knot", "mach",
-            "m/s^2", "cm/s^2", "km/s^2", "km/h^2", "ft/s^2", "in/s^2", "gal", "g0", "gee", "gravity",
-            "joule", "J", "kJ", "MJ", "cal", "calorie", "kcal", "eV", "keV", "MeV", "GeV", "Wh", "kWh", "MWh", "BTU",
-            "newton", "N", "kN", "dyn", "dyne", "lbf", "kgf",
-            "degC", "degF", "kelvin", "K", "deg", "degree", "rad", "radian"
-        };
-
-        std::vector<std::string> from_dims = get_unit_dimensions(from_unit);
+        uint32_t from_mask = get_unit_dimension_mask(from_unit);
 
         auto check_unit_candidate = [&](const std::string& word) {
             if (word.size() >= g_tab_orig_prefix.size()) {
@@ -1492,18 +1585,10 @@ void handleTabCompletion(std::string& expression, int& cursor_pos) {
         };
 
         for (const auto& u : conv_units) {
-            if (!from_dims.empty()) {
-                std::vector<std::string> u_dims = get_unit_dimensions(u);
-                bool match_dim = false;
-                for (const auto& d1 : from_dims) {
-                    for (const auto& d2 : u_dims) {
-                        if (d1 == d2) { match_dim = true; break; }
-                    }
-                    if (match_dim) break;
-                }
-                if (!match_dim) continue;
+            if (from_mask != DIM_NONE && (u.dims & from_mask) == 0) {
+                continue;
             }
-            check_unit_candidate(u);
+            check_unit_candidate(u.name);
         }
     }
 
@@ -1539,6 +1624,7 @@ void handleTabCompletion(std::string& expression, int& cursor_pos) {
         return;
     }
 
+    g_tab_cached_matches = matches;
     g_tab_match_idx = ((g_tab_match_idx % (int)matches.size()) + (int)matches.size()) % (int)matches.size();
     std::string matched_word = matches[g_tab_match_idx];
 
