@@ -110,20 +110,23 @@ Default angular unit is **Degrees** (toggleable to **Radians** via `Fn + W` or i
 
 ### 5. Statistics & Vector Operations
 
-- `mean(a1, a2, ...)` — Arithmetic mean of sample
-- `median(a1, a2, ...)` — Median of sample
-- `std(a1, a2, ...)` — Standard deviation
-- `var(a1, a2, ...)` — Sample variance
-- `min(a1, a2, ...)` / `max(a1, a2, ...)` — Minimum / maximum value
+- `mean(a1, a2, ...)` — Arithmetic mean of sample (or 1D array)
+- `median(a1, a2, ...)` — Median of sample (or 1D array)
+- `mode(a1, a2, ...)` — Mode / most frequent value (or 1D array)
+- `std(a1, a2, ...)` — Standard deviation (or 1D array)
+- `var(a1, a2, ...)` — Sample variance (or 1D array)
+- `sum(a1, a2, ...)` — Sum of elements (or 1D array)
+- `prod(a1, a2, ...)` — Product of elements (or 1D array)
+- `min(a1, a2, ...)` / `max(a1, a2, ...)` — Minimum / maximum value (or 1D array)
 
 ### 6. Combinatorics & Special Functions
 
 - `C(n, k)` (or `Cnk(n, k)`) — Binomial coefficient (combinations $n$ choose $k$)
 - `P(n, k)` — Permutations $n$ P $k$
-- `fact(n)` (or `n!`) — Factorial
-- `gcd(a, b, ...)` — Greatest common divisor
-- `lcm(a, b, ...)` — Least common multiple
-- `fib(n)` — $n$-th Fibonacci number
+- `fact(n)` (or `n!`) — Factorial ($0 \le n \le 170$, integer)
+- `gcd(a, b, ...)` — Greatest common divisor (variadic)
+- `lcm(a, b, ...)` — Least common multiple (variadic)
+- `fib(n)` — $n$-th Fibonacci number ($0 \le n \le 1476$, integer)
 
 ### 7. Built-in Constants
 

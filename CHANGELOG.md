@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.  The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  and this project adheres to [Calendar Versioning](https://calver.org/) (CalVer) with the format `YY.MM.DD`.
 
+## [26.10.28] - 2026-10-28
+
+### Added
+- **Variadic Aggregation Functions**:
+  - Added variadic `sum(a1, a2, ...)`, `prod(a1, a2, ...)`, `min(a1, a2, ...)`, `max(a1, a2, ...)`, `gcd(a1, a2, ...)`, `lcm(a1, a2, ...)` supporting up to 24 arguments.
+  - Added array aggregate support for `prod(arr)` and `mode(arr)`.
+- **Inline Loops & Conditionals**:
+  - Parametric inline loops: `sum(i, 1, 10, i^2)`, `prod(i, 1, 5, i)`, `min(i, 1, 5, expr)`, `max(i, 1, 5, expr)`.
+  - Inline conditionals: `if(cond, true_val, false_val)` and multi-branch `iff(c1, v1, c2, v2, ..., def)`.
+  - Inline range indexing: `(1:2:10)[2]`.
+- **Temperature Unit Aliases in Units Adapter**:
+  - Added aliases for temperature conversions: `tempC`, `tempF`, `tempK`, `tempR`, `degR`, `celsius`, `fahrenheit`, `rankine`.
+- **REPL Array Formatting**:
+  - Direct display of array/vector evaluation results in REPL output history (`[1, 2, 3]`).
+
+### Fixed
+- **Domain & Overflow Bounds**:
+  - Fixed `custom_logb` parameter order to `logb(x, base)` matching documentation.
+  - Enforced integer validation on `fact(n)` and `fib(n)` and added overflow limits ($n \le 170$ for `fact`, $n \le 1476$ for `fib`).
+  - Rewrote `C(n, k)` and `P(n, k)` using multiplicative $O(k)$ evaluation without intermediate factorial overflows.
+  - Differentiated between `Division by Zero` and `Overflow Error`.
+- **Units Conversion Priority**:
+  - Fixed unreachable code in dB conversion for `times_amp` and `times_v` ($20 \log_{10}$), adding positive ratio validation ($> 0$).
+- **Script Engine Variable Scoping**:
+  - Removed premature wiping of global variables in `runScript()`.
+  - Evaluated function arguments before binding parameters in custom script functions and restored caller's `user_args` scope upon return.
+- **Autocompletion**:
+  - Fixed typo in autocompletion list (`arccosech` instead of duplicate `arccosec`).
+  - Added `Cnk(`, `sum(`, `prod(`, `min(`, `max(`, `if(`, `iff(` to `autocomplete_words`.
+
 ## [26.10.25] - 2026-10-25
 
 ### Added
