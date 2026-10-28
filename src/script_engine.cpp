@@ -29,8 +29,6 @@ void runScript(const std::string& code) {
     script_console_output.clear();
     plot_lines.clear();
     plot_hold = false;
-    user_args.clear();
-    user_arrays.clear();
     
     auto original_args = user_args;
     auto original_funcs = user_funcs;
@@ -723,14 +721,19 @@ void runScript(const std::string& code) {
                                 a_pos = comma + 1;
                             }
                             
+                            std::vector<double> eval_arg_vals;
                             for (size_t p_i = 0; p_i < sf.params.size() && p_i < arg_exprs.size(); ++p_i) {
                                 std::string eval_err;
                                 double val = evaluate(preprocessArrayLookups(arg_exprs[p_i], eval_err), eval_err);
+                                eval_arg_vals.push_back(val);
+                            }
+                            auto old_args = user_args;
+                            for (size_t p_i = 0; p_i < eval_arg_vals.size(); ++p_i) {
                                 bool found = false;
                                 for (auto& ua : user_args) {
-                                    if (ua.name == sf.params[p_i]) { ua.val = val; found = true; break; }
+                                    if (ua.name == sf.params[p_i]) { ua.val = eval_arg_vals[p_i]; found = true; break; }
                                 }
-                                if (!found) user_args.push_back({sf.params[p_i], val});
+                                if (!found) user_args.push_back({sf.params[p_i], eval_arg_vals[p_i]});
                             }
                             
                             for (const auto& stmt : sf.statements) {
@@ -770,6 +773,7 @@ void runScript(const std::string& code) {
                                     evaluateInput(preprocessArrayLookups(stmt, eval_err), eval_err, isDef);
                                 }
                             }
+                            user_args = old_args;
                             executed_fn = true;
                             break;
                         }
@@ -1045,15 +1049,19 @@ void runScript(const std::string& code) {
                                 a_pos = comma + 1;
                             }
                             
-                            auto old_args = user_args;
+                            std::vector<double> eval_arg_vals;
                             for (size_t p_i = 0; p_i < sf.params.size() && p_i < arg_exprs.size(); ++p_i) {
                                 std::string eval_err;
                                 double val = evaluate(preprocessArrayLookups(arg_exprs[p_i], eval_err), eval_err);
+                                eval_arg_vals.push_back(val);
+                            }
+                            auto old_args = user_args;
+                            for (size_t p_i = 0; p_i < eval_arg_vals.size(); ++p_i) {
                                 bool found = false;
                                 for (auto& ua : user_args) {
-                                    if (ua.name == sf.params[p_i]) { ua.val = val; found = true; break; }
+                                    if (ua.name == sf.params[p_i]) { ua.val = eval_arg_vals[p_i]; found = true; break; }
                                 }
-                                if (!found) user_args.push_back({sf.params[p_i], val});
+                                if (!found) user_args.push_back({sf.params[p_i], eval_arg_vals[p_i]});
                             }
                             
                             for (const auto& stmt : sf.statements) {
@@ -1115,6 +1123,7 @@ void runScript(const std::string& code) {
                                     evaluateInput(preprocessArrayLookups(stmt, eval_err), eval_err, isDef);
                                 }
                             }
+                            user_args = old_args;
                             executed_custom = true;
                             break;
                         }
