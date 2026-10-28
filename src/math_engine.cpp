@@ -1,4 +1,5 @@
 #include "math_engine.h"
+#include "script_engine.h"
 #include "tinyexpr.h"
 #include <sstream>
 #include <iomanip>
@@ -74,11 +75,22 @@ inline double executeScriptFunc(const std::string& name, const std::vector<doubl
     
     auto lines = func.statements;
     size_t ip = 0;
+    struct FnBlock {
+        std::string type;
+        bool condition_met;
+        size_t start_ip;
+        size_t end_ip;
+        std::string cond_str;
+    };
+    std::vector<FnBlock> blocks;
+
     while (ip < lines.size() && step_count < max_steps) {
         if (has_returned) break;
         step_count++;
         std::string line = lines[ip];
-        if (line.empty()) { ip++; continue; }
+        line.erase(0, line.find_first_not_of(" \t\r"));
+        line.erase(line.find_last_not_of(" \t\r") + 1);
+        if (line.empty() || line[0] == '#' || line.rfind("//", 0) == 0) { ip++; continue; }
 
         if (line.rfind("return ", 0) == 0 || line == "return") {
             std::string ret_expr = (line.size() > 7) ? line.substr(7) : "0";
@@ -90,15 +102,44 @@ inline double executeScriptFunc(const std::string& name, const std::vector<doubl
             break;
         }
 
+        if ((line.rfind("if (", 0) == 0 || line.rfind("if(", 0) == 0) && line.back() == '{') {
+            size_t open_p = line.find('(');
+            size_t close_p = line.rfind(')');
+            size_t end_ip = findMatchingBlockEnd(lines, ip);
+            if (open_p != std::string::npos && close_p != std::string::npos && end_ip != std::string::npos) {
+                std::string cond_str = line.substr(open_p + 1, close_p - open_p - 1);
+                double cv = evaluate(cond_str, err);
+                if (!err.empty()) break;
+                bool cond_ok = (!std::isnan(cv) && cv != 0.0);
+                if (cond_ok) {
+                    blocks.push_back({"if", true, ip, end_ip, ""});
+                    ip++;
+                } else {
+                    blocks.push_back({"if", false, ip, end_ip, ""});
+                    size_t next_b = findMatchingBlockEnd(lines, ip, true);
+                    ip = (next_b != std::string::npos) ? next_b : end_ip;
+                }
+                continue;
+            }
+        } else if (line == "} else {" || line == "else {") {
+            if (!blocks.empty() && blocks.back().type == "if") {
+                if (blocks.back().condition_met) {
+                    ip = blocks.back().end_ip;
+                } else {
+                    blocks.back().condition_met = true;
+                    ip++;
+                }
+                continue;
+            }
+        } else if (isBlockEnd(line)) {
+            if (!blocks.empty()) {
+                blocks.pop_back();
+            }
+            ip++;
+            continue;
+        }
+
         if (line.find('=') != std::string::npos) {
-            size_t eq = line.find('=');
-            std::string lhs = line.substr(0, eq);
-            std::string rhs = line.substr(eq + 1);
-            lhs.erase(0, lhs.find_first_not_of(" \t"));
-            lhs.erase(lhs.find_last_not_of(" \t") + 1);
-            rhs.erase(0, rhs.find_first_not_of(" \t"));
-            rhs.erase(rhs.find_last_not_of(" \t") + 1);
-            
             bool isDef = false;
             evaluateInput(line, err, isDef);
             if (!err.empty()) break;
@@ -169,7 +210,9 @@ inline std::string substituteUserFuncs(std::string expr, std::string& err) {
                 double func_res = executeScriptFunc(sf.name, arg_vals, err);
                 if (!err.empty()) return expr;
                 
-                std::string res_str = fmtNum(func_res);
+                std::ostringstream oss;
+                oss << std::setprecision(15) << func_res;
+                std::string res_str = (func_res < 0.0) ? ("(" + oss.str() + ")") : oss.str();
                 expr.replace(pos, (end + 1) - pos, res_str);
                 pos += res_str.size();
             }
@@ -521,16 +564,17 @@ inline std::string preprocessFactorial(const std::string& s) {
 }
 
 inline std::string replaceLogicalWords(const std::string& s) {
+    // Fast path: check if any of the logical keywords could be present
     if (s.find("and") == std::string::npos &&
         s.find("or") == std::string::npos &&
         s.find("not") == std::string::npos &&
         s.find("xor") == std::string::npos) {
         return s;
     }
-    std::string res = "";
-    res.reserve(s.size());
-    int n = s.size();
-    for (int i = 0; i < n; ) {
+    std::string res;
+    res.reserve(s.size() + 8);
+    const size_t n = s.size();
+    for (size_t i = 0; i < n; ) {
         if (s[i] == '"' || s[i] == '\'') {
             char q = s[i];
             res += s[i++];
@@ -714,15 +758,28 @@ inline double evaluateRelational(const std::string& expr, std::string& err) {
     return std::numeric_limits<double>::quiet_NaN();
 }
 
+static std::string fmtInternal(double val) {
+    std::ostringstream oss;
+    oss << std::setprecision(15) << val;
+    std::string s = oss.str();
+    return (val < 0.0) ? ("(" + s + ")") : s;
+}
+
 inline std::string preprocessLen(const std::string& s) {
     if (s.find("len(") == std::string::npos) return s;
     std::string res = s;
     size_t pos = 0;
     while ((pos = res.find("len(", pos)) != std::string::npos) {
-        bool prev_ok = (pos == 0 || (!std::isalnum(res[pos - 1]) && res[pos - 1] != '_'));
+        bool prev_ok = (pos == 0 || (!std::isalnum((unsigned char)res[pos - 1]) && res[pos - 1] != '_'));
         if (!prev_ok) { pos += 4; continue; }
-        size_t close = res.find(')', pos + 4);
-        if (close == std::string::npos) break;
+        int depth = 1;
+        size_t close = pos + 4;
+        while (close < res.size() && depth > 0) {
+            if (res[close] == '(') depth++;
+            else if (res[close] == ')') depth--;
+            if (depth > 0) close++;
+        }
+        if (depth > 0) break;
         std::string arg = res.substr(pos + 4, close - pos - 4);
         arg.erase(0, arg.find_first_not_of(" \t"));
         arg.erase(arg.find_last_not_of(" \t") + 1);
@@ -730,7 +787,6 @@ inline std::string preprocessLen(const std::string& s) {
         int size_val = 0;
         bool found = false;
         bool is_scalar = false;
-        // Check if arg is defined as a scalar variable in user_args
         for (const auto& ua : user_args) {
             if (ua.name == arg) {
                 is_scalar = true;
@@ -761,8 +817,201 @@ inline std::string preprocessLen(const std::string& s) {
     return res;
 }
 
+static std::vector<std::string> splitTopLevelArgs(const std::string& inside) {
+    std::vector<std::string> args;
+    int p_depth = 0, b_depth = 0;
+    bool in_q = false;
+    std::string cur;
+    for (char c : inside) {
+        if (c == '"') in_q = !in_q;
+        else if (!in_q) {
+            if (c == '(') p_depth++;
+            else if (c == ')') p_depth--;
+            else if (c == '[') b_depth++;
+            else if (c == ']') b_depth--;
+            else if (c == ',' && p_depth == 0 && b_depth == 0) {
+                size_t f = cur.find_first_not_of(" \t");
+                size_t l = cur.find_last_not_of(" \t");
+                args.push_back(f == std::string::npos ? "" : cur.substr(f, l - f + 1));
+                cur.clear();
+                continue;
+            }
+        }
+        cur += c;
+    }
+    size_t f = cur.find_first_not_of(" \t");
+    size_t l = cur.find_last_not_of(" \t");
+    args.push_back(f == std::string::npos ? "" : cur.substr(f, l - f + 1));
+    return args;
+}
+
+static bool isValidLoopIdent(const std::string& s) {
+    if (s.empty() || s == "pi" || s == "e" || s == "phi") return false;
+    if (!std::isalpha((unsigned char)s[0]) && s[0] != '_') return false;
+    for (char c : s) {
+        if (!std::isalnum((unsigned char)c) && c != '_') return false;
+    }
+    return true;
+}
+
+static bool isDefinedScalarName(const std::string& s) {
+    for (const auto& ua : user_args) if (ua.name == s) return true;
+    for (const auto& uc : user_consts) if (uc.name == s) return true;
+    return false;
+}
+
+static bool exprReferencesIdent(const std::string& expr, const std::string& ident) {
+    size_t pos = 0;
+    while ((pos = expr.find(ident, pos)) != std::string::npos) {
+        bool prev_ok = (pos == 0 || (!std::isalnum((unsigned char)expr[pos - 1]) && expr[pos - 1] != '_'));
+        bool next_ok = (pos + ident.size() == expr.size() || (!std::isalnum((unsigned char)expr[pos + ident.size()]) && expr[pos + ident.size()] != '_'));
+        if (prev_ok && next_ok) return true;
+        pos += ident.size();
+    }
+    return false;
+}
+
+static std::string preprocessInlineConditionalsAndLoops(const std::string& s, std::string& err) {
+    std::string res = s;
+
+    // 1. Handle iff(...) and if(...)
+    static const std::vector<std::string> cond_funcs = {"iff", "if"};
+    for (const auto& fname : cond_funcs) {
+        std::string target = fname + "(";
+        size_t pos = 0;
+        while ((pos = res.find(target, pos)) != std::string::npos) {
+            bool prev_ok = (pos == 0 || (!std::isalnum((unsigned char)res[pos - 1]) && res[pos - 1] != '_'));
+            if (!prev_ok) { pos += target.size(); continue; }
+            int depth = 1;
+            int b_depth = 0;
+            size_t close = pos + target.size();
+            while (close < res.size() && depth > 0) {
+                if (res[close] == '(') depth++;
+                else if (res[close] == ')') depth--;
+                else if (res[close] == '[') b_depth++;
+                else if (res[close] == ']') b_depth--;
+                if (depth > 0) close++;
+            }
+            if (depth > 0) break;
+
+            std::string inside = res.substr(pos + target.size(), close - pos - target.size());
+            auto args = splitTopLevelArgs(inside);
+            if (fname == "if") {
+                if (args.size() != 3) {
+                    err = "if() requires 3 arguments";
+                    return res;
+                }
+                double cond_v = evaluate(args[0], err);
+                if (!err.empty()) return res;
+                const std::string& branch = (std::abs(cond_v) > 1e-12) ? args[1] : args[2];
+                double val = evaluate(branch, err);
+                if (!err.empty()) return res;
+                std::string rep = fmtInternal(val);
+                res.replace(pos, close - pos + 1, rep);
+                pos += rep.size();
+            } else {
+                if (args.size() < 3 || args.size() % 2 == 0) {
+                    err = "iff() requires odd number of arguments >= 3";
+                    return res;
+                }
+                double val = 0.0;
+                bool matched = false;
+                for (size_t k = 0; k + 1 < args.size(); k += 2) {
+                    double cond_v = evaluate(args[k], err);
+                    if (!err.empty()) return res;
+                    if (std::abs(cond_v) > 1e-12) {
+                        val = evaluate(args[k + 1], err);
+                        if (!err.empty()) return res;
+                        matched = true;
+                        break;
+                    }
+                }
+                if (!matched) {
+                    val = evaluate(args.back(), err);
+                    if (!err.empty()) return res;
+                }
+                std::string rep = fmtInternal(val);
+                res.replace(pos, close - pos + 1, rep);
+                pos += rep.size();
+            }
+        }
+    }
+
+    // 2. Handle 4-argument inline loops: sum(i, a, b, expr), prod(i, a, b, expr), min(i, a, b, expr), max(i, a, b, expr)
+    static const std::vector<std::string> loop_funcs = {"sum", "prod", "min", "max"};
+    for (const auto& fname : loop_funcs) {
+        std::string target = fname + "(";
+        size_t pos = 0;
+        while ((pos = res.find(target, pos)) != std::string::npos) {
+            bool prev_ok = (pos == 0 || (!std::isalnum((unsigned char)res[pos - 1]) && res[pos - 1] != '_'));
+            if (!prev_ok) { pos += target.size(); continue; }
+            int depth = 1;
+            int b_depth = 0;
+            size_t close = pos + target.size();
+            while (close < res.size() && depth > 0) {
+                if (res[close] == '(') depth++;
+                else if (res[close] == ')') depth--;
+                else if (res[close] == '[') b_depth++;
+                else if (res[close] == ']') b_depth--;
+                if (depth > 0) close++;
+            }
+            if (depth > 0) break;
+
+            std::string inside = res.substr(pos + target.size(), close - pos - target.size());
+            auto args = splitTopLevelArgs(inside);
+            if (args.size() == 4 && isValidLoopIdent(args[0]) && (!isDefinedScalarName(args[0]) || exprReferencesIdent(args[3], args[0]))) {
+                double start_d = evaluate(args[1], err);
+                if (!err.empty()) return res;
+                double end_d = evaluate(args[2], err);
+                if (!err.empty()) return res;
+                int64_t i_start = static_cast<int64_t>(std::llround(start_d));
+                int64_t i_end = static_cast<int64_t>(std::llround(end_d));
+                if (i_end - i_start > 100000) {
+                    err = "Overflow Error: loop limit exceeded";
+                    return res;
+                }
+                auto old_args = user_args;
+                size_t var_idx = user_args.size();
+                for (size_t ui = 0; ui < user_args.size(); ++ui) {
+                    if (user_args[ui].name == args[0]) { var_idx = ui; break; }
+                }
+                if (var_idx == user_args.size()) {
+                    user_args.push_back({args[0], 0.0});
+                }
+
+                double acc = 0.0;
+                if (fname == "prod") acc = 1.0;
+                else if (fname == "min") acc = std::numeric_limits<double>::infinity();
+                else if (fname == "max") acc = -std::numeric_limits<double>::infinity();
+
+                for (int64_t idx = i_start; idx <= i_end; ++idx) {
+                    user_args[var_idx].val = static_cast<double>(idx);
+                    double step_v = evaluate(args[3], err);
+                    if (!err.empty()) {
+                        user_args = old_args;
+                        return res;
+                    }
+                    if (fname == "sum") acc += step_v;
+                    else if (fname == "prod") acc *= step_v;
+                    else if (fname == "min") { if (step_v < acc) acc = step_v; }
+                    else if (fname == "max") { if (step_v > acc) acc = step_v; }
+                }
+                user_args = old_args;
+                if (i_start > i_end && (fname == "min" || fname == "max")) acc = 0.0;
+                std::string rep = fmtInternal(acc);
+                res.replace(pos, close - pos + 1, rep);
+                pos += rep.size();
+            } else {
+                pos += target.size();
+            }
+        }
+    }
+
+    return res;
+}
+
 std::string preprocessVectorStats(const std::string& s) {
-    static const std::vector<std::string> funcs = {"mean", "median", "mode", "var", "std", "sum", "min", "max"};
+    static const std::vector<std::string> funcs = {"mean", "median", "mode", "var", "std", "sum", "prod", "min", "max"};
     std::string res = s;
 
     // 1. Process 2-argument vector function: dot(A, B)
@@ -798,16 +1047,15 @@ std::string preprocessVectorStats(const std::string& s) {
             for (size_t i = 0; i < vec1.size(); ++i) {
                 dot_val += vec1[i] * vec2[i];
             }
-            std::ostringstream oss;
-            oss << dot_val;
-            res.replace(pos, close - pos + 1, oss.str());
-            pos += oss.str().size();
+            std::string rep = fmtInternal(dot_val);
+            res.replace(pos, close - pos + 1, rep);
+            pos += rep.size();
         } else {
             pos += 4;
         }
     }
 
-    // 2. Process 1-argument vector stats functions (mean, median, mode, var, std, sum, min, max)
+    // 2. Process 1-argument vector stats functions (mean, median, mode, var, std, sum, prod, min, max)
     for (const auto& fname : funcs) {
         std::string target = fname + "(";
         size_t fpos = 0;
@@ -845,6 +1093,10 @@ std::string preprocessVectorStats(const std::string& s) {
                     double sum = 0.0;
                     for (double v : vec) sum += v;
                     computed_val = sum;
+                } else if (fname == "prod") {
+                    double prod = 1.0;
+                    for (double v : vec) prod *= v;
+                    computed_val = prod;
                 } else if (fname == "min") {
                     double m = vec[0];
                     for (double v : vec) if (v < m) m = v;
@@ -885,10 +1137,9 @@ std::string preprocessVectorStats(const std::string& s) {
                     computed_val = std::sqrt(var_v);
                 }
 
-                std::ostringstream oss;
-                oss << computed_val;
-                res.replace(fpos, close - fpos + 1, oss.str());
-                fpos += oss.str().size();
+                std::string rep = fmtInternal(computed_val);
+                res.replace(fpos, close - fpos + 1, rep);
+                fpos += rep.size();
             } else {
                 fpos += target.size();
             }
@@ -898,12 +1149,13 @@ std::string preprocessVectorStats(const std::string& s) {
     return res;
 }
 
-
+static bool s_in_array_fallback = false;
 
 double evaluate(const std::string& expr_str, std::string& err) {
     err = "";
     g_math_domain_err = "";
     g_last_result_angle = AngleUnit::NONE;
+    g_last_eval_is_array = false;
     std::string help_str;
     if (preprocessHelp(expr_str, help_str)) {
         err = help_str;
@@ -915,6 +1167,12 @@ double evaluate(const std::string& expr_str, std::string& err) {
     }
     
     std::string subbed = substituteUserFuncs(expr_str, err);
+    if (!err.empty()) return std::numeric_limits<double>::quiet_NaN();
+
+    subbed = preprocessArrayLookups(subbed, err);
+    if (!err.empty()) return std::numeric_limits<double>::quiet_NaN();
+
+    subbed = preprocessInlineConditionalsAndLoops(subbed, err);
     if (!err.empty()) return std::numeric_limits<double>::quiet_NaN();
     
     std::string preprocessed = preprocessExpression(subbed);
@@ -934,161 +1192,212 @@ double evaluate(const std::string& expr_str, std::string& err) {
         return std::numeric_limits<double>::quiet_NaN();
     }
     
-    te_parser tep;
-    
+    static te_parser s_tep;
+    static bool s_tep_initialized = false;
+    if (!s_tep_initialized) {
+        s_tep.add_variable_or_function(te_variable{"sin", custom_sin});
+        s_tep.add_variable_or_function(te_variable{"cos", custom_cos});
+        s_tep.add_variable_or_function(te_variable{"tan", custom_tan});
+        s_tep.add_variable_or_function(te_variable{"tg", custom_tan});
+        s_tep.add_variable_or_function(te_variable{"cot", custom_cot});
+        s_tep.add_variable_or_function(te_variable{"ctg", custom_cot});
+        s_tep.add_variable_or_function(te_variable{"ctan", custom_ctan});
+        s_tep.add_variable_or_function(te_variable{"sec", custom_sec});
+        s_tep.add_variable_or_function(te_variable{"csc", custom_csc});
+        s_tep.add_variable_or_function(te_variable{"cosec", custom_csc});
+
+        s_tep.add_variable_or_function(te_variable{"asin", custom_asin});
+        s_tep.add_variable_or_function(te_variable{"arcsin", custom_asin});
+        s_tep.add_variable_or_function(te_variable{"acos", custom_acos});
+        s_tep.add_variable_or_function(te_variable{"arccos", custom_acos});
+        s_tep.add_variable_or_function(te_variable{"atan", custom_atan});
+        s_tep.add_variable_or_function(te_variable{"arctan", custom_atan});
+        s_tep.add_variable_or_function(te_variable{"atg", custom_atan});
+        s_tep.add_variable_or_function(te_variable{"arctg", custom_atan});
+        s_tep.add_variable_or_function(te_variable{"atan2", custom_atan2});
+        s_tep.add_variable_or_function(te_variable{"acot", custom_acot});
+        s_tep.add_variable_or_function(te_variable{"arccot", custom_acot});
+        s_tep.add_variable_or_function(te_variable{"actg", custom_acot});
+        s_tep.add_variable_or_function(te_variable{"arcctg", custom_acot});
+        s_tep.add_variable_or_function(te_variable{"actan", custom_acot});
+        s_tep.add_variable_or_function(te_variable{"arcctan", custom_acot});
+        s_tep.add_variable_or_function(te_variable{"asec", custom_asec});
+        s_tep.add_variable_or_function(te_variable{"arcsec", custom_asec});
+        s_tep.add_variable_or_function(te_variable{"acsc", custom_acsc});
+        s_tep.add_variable_or_function(te_variable{"arccsc", custom_acsc});
+        s_tep.add_variable_or_function(te_variable{"acosec", custom_acsc});
+        s_tep.add_variable_or_function(te_variable{"arccosec", custom_acsc});
+
+        s_tep.add_variable_or_function(te_variable{"sinh", custom_sinh});
+        s_tep.add_variable_or_function(te_variable{"sh", custom_sinh});
+        s_tep.add_variable_or_function(te_variable{"cosh", custom_cosh});
+        s_tep.add_variable_or_function(te_variable{"ch", custom_cosh});
+        s_tep.add_variable_or_function(te_variable{"tanh", custom_tanh});
+        s_tep.add_variable_or_function(te_variable{"th", custom_tanh});
+        s_tep.add_variable_or_function(te_variable{"coth", custom_coth});
+        s_tep.add_variable_or_function(te_variable{"cth", custom_coth});
+        s_tep.add_variable_or_function(te_variable{"ctgh", custom_coth});
+        s_tep.add_variable_or_function(te_variable{"ctanh", custom_coth});
+        s_tep.add_variable_or_function(te_variable{"sech", custom_sech});
+        s_tep.add_variable_or_function(te_variable{"sch", custom_sech});
+        s_tep.add_variable_or_function(te_variable{"csch", custom_csch});
+        s_tep.add_variable_or_function(te_variable{"cosech", custom_csch});
+
+        s_tep.add_variable_or_function(te_variable{"asinh", custom_asinh});
+        s_tep.add_variable_or_function(te_variable{"ahsin", custom_asinh});
+        s_tep.add_variable_or_function(te_variable{"arcsinh", custom_asinh});
+        s_tep.add_variable_or_function(te_variable{"arsinh", custom_asinh});
+        s_tep.add_variable_or_function(te_variable{"arsh", custom_asinh});
+        s_tep.add_variable_or_function(te_variable{"acosh", custom_acosh});
+        s_tep.add_variable_or_function(te_variable{"ahcos", custom_acosh});
+        s_tep.add_variable_or_function(te_variable{"arccosh", custom_acosh});
+        s_tep.add_variable_or_function(te_variable{"arcosh", custom_acosh});
+        s_tep.add_variable_or_function(te_variable{"arch", custom_acosh});
+        s_tep.add_variable_or_function(te_variable{"atanh", custom_atanh});
+        s_tep.add_variable_or_function(te_variable{"ahtan", custom_atanh});
+        s_tep.add_variable_or_function(te_variable{"arctanh", custom_atanh});
+        s_tep.add_variable_or_function(te_variable{"artanh", custom_atanh});
+        s_tep.add_variable_or_function(te_variable{"arth", custom_atanh});
+        s_tep.add_variable_or_function(te_variable{"artg", custom_atanh});
+        s_tep.add_variable_or_function(te_variable{"arctgh", custom_atanh});
+        s_tep.add_variable_or_function(te_variable{"acoth", custom_acoth});
+        s_tep.add_variable_or_function(te_variable{"ahcot", custom_acoth});
+        s_tep.add_variable_or_function(te_variable{"arccoth", custom_acoth});
+        s_tep.add_variable_or_function(te_variable{"arcoth", custom_acoth});
+        s_tep.add_variable_or_function(te_variable{"arcth", custom_acoth});
+        s_tep.add_variable_or_function(te_variable{"ahcoth", custom_acoth});
+        s_tep.add_variable_or_function(te_variable{"asech", custom_asech});
+        s_tep.add_variable_or_function(te_variable{"ahsec", custom_asech});
+        s_tep.add_variable_or_function(te_variable{"arcsech", custom_asech});
+        s_tep.add_variable_or_function(te_variable{"arsech", custom_asech});
+        s_tep.add_variable_or_function(te_variable{"ahsech", custom_asech});
+        s_tep.add_variable_or_function(te_variable{"acsch", custom_acsch});
+        s_tep.add_variable_or_function(te_variable{"ahcsc", custom_acsch});
+        s_tep.add_variable_or_function(te_variable{"arccsch", custom_acsch});
+        s_tep.add_variable_or_function(te_variable{"arcsch", custom_acsch});
+        s_tep.add_variable_or_function(te_variable{"acosech", custom_acsch});
+        s_tep.add_variable_or_function(te_variable{"arccosech", custom_acsch});
+        s_tep.add_variable_or_function(te_variable{"ahcsch", custom_acsch});
+        
+        s_tep.add_variable_or_function(te_variable{"deg2rad", custom_deg2rad});
+        s_tep.add_variable_or_function(te_variable{"d2r", custom_deg2rad});
+        s_tep.add_variable_or_function(te_variable{"rad2deg", custom_rad2deg});
+        s_tep.add_variable_or_function(te_variable{"r2d", custom_rad2deg});
+        
+        s_tep.add_variable_or_function(te_variable{"sqrt", custom_sqrt});
+        s_tep.add_variable_or_function(te_variable{"ln", custom_ln});
+        s_tep.add_variable_or_function(te_variable{"log", custom_log10});
+        s_tep.add_variable_or_function(te_variable{"log10", custom_log10});
+        s_tep.add_variable_or_function(te_variable{"log2", custom_log2});
+        s_tep.add_variable_or_function(te_variable{"logb", custom_logb});
+        s_tep.add_variable_or_function(te_variable{"mod", custom_mod});
+        s_tep.add_variable_or_function(te_variable{"sgn", custom_sgn});
+        s_tep.add_variable_or_function(te_variable{"trunc", custom_trunc});
+        s_tep.add_variable_or_function(te_variable{"fact", custom_fact});
+        s_tep.add_variable_or_function(te_variable{"C", custom_C});
+        s_tep.add_variable_or_function(te_variable{"Cnk", custom_C});
+        s_tep.add_variable_or_function(te_variable{"P", custom_P});
+        s_tep.add_variable_or_function(te_variable{"gcd", variadic_gcd, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
+        s_tep.add_variable_or_function(te_variable{"lcm", variadic_lcm, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
+        s_tep.add_variable_or_function(te_variable{"fib", custom_fib});
+        s_tep.add_variable_or_function(te_variable{"rUni", custom_rUni});
+        s_tep.add_variable_or_function(te_variable{"rNor", custom_rNor});
+        s_tep.add_variable_or_function(te_variable{"abs", custom_abs});
+        s_tep.add_variable_or_function(te_variable{"dot", custom_dot});
+        s_tep.add_variable_or_function(te_variable{"print", [](double x) { return x; }});
+        
+        s_tep.add_variable_or_function(te_variable{"mean", variadic_mean, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
+        s_tep.add_variable_or_function(te_variable{"median", variadic_median, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
+        s_tep.add_variable_or_function(te_variable{"mode", variadic_mode, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
+        s_tep.add_variable_or_function(te_variable{"var", variadic_var, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
+        s_tep.add_variable_or_function(te_variable{"std", variadic_std, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
+        s_tep.add_variable_or_function(te_variable{"sum", variadic_sum, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
+        s_tep.add_variable_or_function(te_variable{"prod", variadic_prod, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
+        s_tep.add_variable_or_function(te_variable{"min", variadic_min, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
+        s_tep.add_variable_or_function(te_variable{"max", variadic_max, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
+        s_tep_initialized = true;
+    }
+
+    auto& var_set = s_tep.get_variables_and_functions();
+    std::vector<te_variable> shadowed_builtins;
+    std::vector<te_variable> added_vars;
+
+    auto add_dyn_var = [&](const std::string& name, const double* ptr) {
+        te_variable v{name, ptr};
+        auto it = var_set.find(v);
+        if (it != var_set.end()) {
+            shadowed_builtins.push_back(*it);
+            var_set.erase(it);
+        }
+        var_set.insert(v);
+        added_vars.push_back(v);
+    };
+
     // 1. Register user defined variables
     for (size_t i = 0; i < user_args.size(); ++i) {
-        tep.add_variable_or_function(te_variable{user_args[i].name, &user_args[i].val});
+        add_dyn_var(user_args[i].name, &user_args[i].val);
     }
     
     // 2. Register user defined constants
     for (size_t i = 0; i < user_consts.size(); ++i) {
-        tep.add_variable_or_function(te_variable{user_consts[i].name, &user_consts[i].val});
+        add_dyn_var(user_consts[i].name, &user_consts[i].val);
     }
     
     // 3. Register history variables (e1, e2, e3...)
     if (!history.empty() && preprocessed.find('e') != std::string::npos) {
         size_t start_h = (history.size() > 30) ? (history.size() - 30) : 0;
         for (size_t i = start_h; i < history.size(); ++i) {
-            tep.add_variable_or_function(te_variable{"e" + std::to_string(i + 1), &history[i]});
+            add_dyn_var("e" + std::to_string(i + 1), &history[i]);
         }
     }
     
-    // 4. Built-in functions
-    tep.add_variable_or_function(te_variable{"sin", custom_sin});
-    tep.add_variable_or_function(te_variable{"cos", custom_cos});
-    tep.add_variable_or_function(te_variable{"tan", custom_tan});
-    tep.add_variable_or_function(te_variable{"tg", custom_tan});
-    tep.add_variable_or_function(te_variable{"cot", custom_cot});
-    tep.add_variable_or_function(te_variable{"ctg", custom_cot});
-    tep.add_variable_or_function(te_variable{"ctan", custom_ctan});
-    tep.add_variable_or_function(te_variable{"sec", custom_sec});
-    tep.add_variable_or_function(te_variable{"csc", custom_csc});
-    tep.add_variable_or_function(te_variable{"cosec", custom_csc});
+    double val = s_tep.evaluate(preprocessed);
+    bool tep_ok = s_tep.success();
+    std::string tep_err_msg = tep_ok ? "" : s_tep.get_last_error_message();
+    int64_t tep_err_pos = tep_ok ? -1 : s_tep.get_last_error_position();
 
-    tep.add_variable_or_function(te_variable{"asin", custom_asin});
-    tep.add_variable_or_function(te_variable{"arcsin", custom_asin});
-    tep.add_variable_or_function(te_variable{"acos", custom_acos});
-    tep.add_variable_or_function(te_variable{"arccos", custom_acos});
-    tep.add_variable_or_function(te_variable{"atan", custom_atan});
-    tep.add_variable_or_function(te_variable{"arctan", custom_atan});
-    tep.add_variable_or_function(te_variable{"atg", custom_atan});
-    tep.add_variable_or_function(te_variable{"arctg", custom_atan});
-    tep.add_variable_or_function(te_variable{"atan2", custom_atan2});
-    tep.add_variable_or_function(te_variable{"acot", custom_acot});
-    tep.add_variable_or_function(te_variable{"arccot", custom_acot});
-    tep.add_variable_or_function(te_variable{"actg", custom_acot});
-    tep.add_variable_or_function(te_variable{"arcctg", custom_acot});
-    tep.add_variable_or_function(te_variable{"actan", custom_acot});
-    tep.add_variable_or_function(te_variable{"arcctan", custom_acot});
-    tep.add_variable_or_function(te_variable{"asec", custom_asec});
-    tep.add_variable_or_function(te_variable{"arcsec", custom_asec});
-    tep.add_variable_or_function(te_variable{"acsc", custom_acsc});
-    tep.add_variable_or_function(te_variable{"arccsc", custom_acsc});
-    tep.add_variable_or_function(te_variable{"acosec", custom_acsc});
-    tep.add_variable_or_function(te_variable{"arccosec", custom_acsc});
-
-    tep.add_variable_or_function(te_variable{"sinh", custom_sinh});
-    tep.add_variable_or_function(te_variable{"sh", custom_sinh});
-    tep.add_variable_or_function(te_variable{"cosh", custom_cosh});
-    tep.add_variable_or_function(te_variable{"ch", custom_cosh});
-    tep.add_variable_or_function(te_variable{"tanh", custom_tanh});
-    tep.add_variable_or_function(te_variable{"th", custom_tanh});
-    tep.add_variable_or_function(te_variable{"coth", custom_coth});
-    tep.add_variable_or_function(te_variable{"cth", custom_coth});
-    tep.add_variable_or_function(te_variable{"ctgh", custom_coth});
-    tep.add_variable_or_function(te_variable{"ctanh", custom_coth});
-    tep.add_variable_or_function(te_variable{"sech", custom_sech});
-    tep.add_variable_or_function(te_variable{"sch", custom_sech});
-    tep.add_variable_or_function(te_variable{"csch", custom_csch});
-    tep.add_variable_or_function(te_variable{"cosech", custom_csch});
-
-    tep.add_variable_or_function(te_variable{"asinh", custom_asinh});
-    tep.add_variable_or_function(te_variable{"ahsin", custom_asinh});
-    tep.add_variable_or_function(te_variable{"arcsinh", custom_asinh});
-    tep.add_variable_or_function(te_variable{"arsinh", custom_asinh});
-    tep.add_variable_or_function(te_variable{"arsh", custom_asinh});
-    tep.add_variable_or_function(te_variable{"acosh", custom_acosh});
-    tep.add_variable_or_function(te_variable{"ahcos", custom_acosh});
-    tep.add_variable_or_function(te_variable{"arccosh", custom_acosh});
-    tep.add_variable_or_function(te_variable{"arcosh", custom_acosh});
-    tep.add_variable_or_function(te_variable{"arch", custom_acosh});
-    tep.add_variable_or_function(te_variable{"atanh", custom_atanh});
-    tep.add_variable_or_function(te_variable{"ahtan", custom_atanh});
-    tep.add_variable_or_function(te_variable{"arctanh", custom_atanh});
-    tep.add_variable_or_function(te_variable{"artanh", custom_atanh});
-    tep.add_variable_or_function(te_variable{"arth", custom_atanh});
-    tep.add_variable_or_function(te_variable{"artg", custom_atanh});
-    tep.add_variable_or_function(te_variable{"arctgh", custom_atanh});
-    tep.add_variable_or_function(te_variable{"acoth", custom_acoth});
-    tep.add_variable_or_function(te_variable{"ahcot", custom_acoth});
-    tep.add_variable_or_function(te_variable{"arccoth", custom_acoth});
-    tep.add_variable_or_function(te_variable{"arcoth", custom_acoth});
-    tep.add_variable_or_function(te_variable{"arcth", custom_acoth});
-    tep.add_variable_or_function(te_variable{"ahcoth", custom_acoth});
-    tep.add_variable_or_function(te_variable{"asech", custom_asech});
-    tep.add_variable_or_function(te_variable{"ahsec", custom_asech});
-    tep.add_variable_or_function(te_variable{"arcsech", custom_asech});
-    tep.add_variable_or_function(te_variable{"arsech", custom_asech});
-    tep.add_variable_or_function(te_variable{"ahsech", custom_asech});
-    tep.add_variable_or_function(te_variable{"acsch", custom_acsch});
-    tep.add_variable_or_function(te_variable{"ahcsc", custom_acsch});
-    tep.add_variable_or_function(te_variable{"arccsch", custom_acsch});
-    tep.add_variable_or_function(te_variable{"arcsch", custom_acsch});
-    tep.add_variable_or_function(te_variable{"acosech", custom_acsch});
-    tep.add_variable_or_function(te_variable{"arccosech", custom_acsch});
-    tep.add_variable_or_function(te_variable{"ahcsch", custom_acsch});
+    for (const auto& v : added_vars) {
+        var_set.erase(v);
+    }
+    for (auto it = shadowed_builtins.rbegin(); it != shadowed_builtins.rend(); ++it) {
+        var_set.insert(*it);
+    }
     
-    tep.add_variable_or_function(te_variable{"deg2rad", custom_deg2rad});
-    tep.add_variable_or_function(te_variable{"d2r", custom_deg2rad});
-    tep.add_variable_or_function(te_variable{"rad2deg", custom_rad2deg});
-    tep.add_variable_or_function(te_variable{"r2d", custom_rad2deg});
-    
-    tep.add_variable_or_function(te_variable{"sqrt", custom_sqrt});
-    tep.add_variable_or_function(te_variable{"ln", custom_ln});
-    tep.add_variable_or_function(te_variable{"log", custom_log10});
-    tep.add_variable_or_function(te_variable{"log10", custom_log10});
-    tep.add_variable_or_function(te_variable{"log2", custom_log2});
-    tep.add_variable_or_function(te_variable{"logb", custom_logb});
-    tep.add_variable_or_function(te_variable{"mod", custom_mod});
-    tep.add_variable_or_function(te_variable{"sgn", custom_sgn});
-    tep.add_variable_or_function(te_variable{"trunc", custom_trunc});
-    tep.add_variable_or_function(te_variable{"fact", custom_fact});
-    tep.add_variable_or_function(te_variable{"C", custom_C});
-    tep.add_variable_or_function(te_variable{"P", custom_P});
-    tep.add_variable_or_function(te_variable{"gcd", custom_gcd});
-    tep.add_variable_or_function(te_variable{"lcm", custom_lcm});
-    tep.add_variable_or_function(te_variable{"fib", custom_fib});
-    tep.add_variable_or_function(te_variable{"rUni", custom_rUni});
-    tep.add_variable_or_function(te_variable{"rNor", custom_rNor});
-    tep.add_variable_or_function(te_variable{"abs", custom_abs});
-    tep.add_variable_or_function(te_variable{"dot", custom_dot});
-    tep.add_variable_or_function(te_variable{"print", [](double x) { return x; }});
-    
-    tep.add_variable_or_function(te_variable{"mean", variadic_mean, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
-    tep.add_variable_or_function(te_variable{"median", variadic_median, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
-    tep.add_variable_or_function(te_variable{"mode", variadic_mode, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
-    tep.add_variable_or_function(te_variable{"var", variadic_var, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
-    tep.add_variable_or_function(te_variable{"std", variadic_std, static_cast<te_variable_flags>(TE_PURE | TE_VARIADIC)});
-    
-    double val = tep.evaluate(preprocessed);
-    
-    if (!tep.success()) {
+    if (!tep_ok) {
         if (!g_math_domain_err.empty()) {
             err = g_math_domain_err;
             return std::numeric_limits<double>::quiet_NaN();
         }
-        std::string err_msg = tep.get_last_error_message();
-        if (err_msg.find("bracket") != std::string::npos || err_msg.find("parenthes") != std::string::npos) {
+        if (!s_in_array_fallback) {
+            s_in_array_fallback = true;
+            bool is_arr = false;
+            std::string arr_err;
+            std::vector<double> arr_res = parseArrayExpr(subbed, is_arr, arr_err);
+            s_in_array_fallback = false;
+            if (!arr_err.empty()) {
+                err = arr_err;
+                return std::numeric_limits<double>::quiet_NaN();
+            }
+            if (is_arr) {
+                g_last_eval_is_array = true;
+                g_last_eval_array = arr_res;
+                return arr_res.empty() ? 0.0 : arr_res[0];
+            }
+            if (!arr_res.empty()) {
+                return arr_res[0];
+            }
+        }
+        if (tep_err_msg.find("zero") != std::string::npos) {
+            err = "Division by Zero";
+        } else if (tep_err_msg.find("bracket") != std::string::npos || tep_err_msg.find("parenthes") != std::string::npos) {
             err = "Mismatched Brackets";
-        } else if (err_msg.find("unknown") != std::string::npos || err_msg.find("token") != std::string::npos || err_msg.find("symbol") != std::string::npos) {
-            int64_t pos = tep.get_last_error_position();
-            if (pos >= 0 && (size_t)pos < preprocessed.size()) {
-                size_t end = pos;
+        } else if (tep_err_msg.find("unknown") != std::string::npos || tep_err_msg.find("token") != std::string::npos || tep_err_msg.find("symbol") != std::string::npos) {
+            if (tep_err_pos >= 0 && (size_t)tep_err_pos < preprocessed.size()) {
+                size_t end = tep_err_pos;
                 while (end < preprocessed.size() && (std::isalnum((unsigned char)preprocessed[end]) || preprocessed[end] == '_')) {
                     end++;
                 }
-                std::string token = preprocessed.substr(pos, end - pos);
+                std::string token = preprocessed.substr(tep_err_pos, end - tep_err_pos);
                 if (!token.empty()) {
                     err = "Unknown Token: '" + token + "'";
                 } else {
@@ -1106,7 +1415,11 @@ double evaluate(const std::string& expr_str, std::string& err) {
     if (!g_math_domain_err.empty()) {
         err = g_math_domain_err;
     } else if (std::isinf(val)) {
-        err = "Division by Zero";
+        if (preprocessed.find('/') != std::string::npos) {
+            err = "Division by Zero";
+        } else {
+            err = "Overflow Error";
+        }
     } else if (std::isnan(val)) {
         err = "Math Error";
     }
@@ -1122,6 +1435,7 @@ double evaluateWithoutHistory(const std::string& expr_str, std::string& err) {
 }
 
 double evaluateInput(const std::string& expr_str, std::string& err, bool& isDefinition) {
+    err = "";
     isDefinition = false;
     g_last_result_angle = AngleUnit::NONE;
     
@@ -1243,7 +1557,7 @@ double evaluateInput(const std::string& expr_str, std::string& err, bool& isDefi
                 }
                 return val;
             } else {
-                err = "Const Def Error";
+                if (err.empty()) err = "Const Def Error";
                 return std::numeric_limits<double>::quiet_NaN();
             }
         } else {
@@ -1264,6 +1578,7 @@ double evaluateInput(const std::string& expr_str, std::string& err, bool& isDefi
                     std::vector<double> res = evaluateArrayBinaryOp(op1, op, op2, is_scalar, scalar_res, err);
                     if (err.empty()) {
                         if (is_scalar) {
+                            user_arrays.erase(lhs);
                             user_args.erase(std::remove_if(user_args.begin(), user_args.end(), [&](const UserArg& a) {
                                 return a.name == lhs;
                             }), user_args.end());
@@ -1274,6 +1589,9 @@ double evaluateInput(const std::string& expr_str, std::string& err, bool& isDefi
                             return scalar_res;
                         } else {
                             user_arrays[lhs] = res;
+                            user_args.erase(std::remove_if(user_args.begin(), user_args.end(), [&](const UserArg& a) {
+                                return a.name == lhs;
+                            }), user_args.end());
                             if (std::find(autocomplete_words.begin(), autocomplete_words.end(), lhs) == autocomplete_words.end()) {
                                 autocomplete_words.push_back(lhs);
                             }
@@ -1296,9 +1614,22 @@ double evaluateInput(const std::string& expr_str, std::string& err, bool& isDefi
                 }
                 return 1.0;
             }
-            err = "";
+            if (!err.empty()) {
+                return std::numeric_limits<double>::quiet_NaN();
+            }
             double val = evaluate(rhs, err);
             if (err.empty() && !std::isnan(val)) {
+                if (g_last_eval_is_array) {
+                    user_arrays[lhs] = g_last_eval_array;
+                    user_args.erase(std::remove_if(user_args.begin(), user_args.end(), [&](const UserArg& a) {
+                        return a.name == lhs;
+                    }), user_args.end());
+                    if (std::find(autocomplete_words.begin(), autocomplete_words.end(), lhs) == autocomplete_words.end()) {
+                        autocomplete_words.push_back(lhs);
+                    }
+                    return 1.0;
+                }
+                user_arrays.erase(lhs);
                 bool found = false;
                 for (auto& arg : user_args) {
                     if (arg.name == lhs) {
@@ -1316,7 +1647,7 @@ double evaluateInput(const std::string& expr_str, std::string& err, bool& isDefi
                 }
                 return val;
             } else {
-                err = "Var Def Error";
+                if (err.empty()) err = "Var Def Error";
                 return std::numeric_limits<double>::quiet_NaN();
             }
         }
@@ -1413,7 +1744,7 @@ static uint32_t get_unit_dimension_mask(const std::string& raw_unit) {
     if (in_set({"watt", "watts", "w", "mw", "uw", "kw", "gw", "hp", "horsepower", "dbm", "dbw"})) {
         dims |= DIM_POWER;
     }
-    if (in_set({"db", "times", "ratio", "dbm", "dbw", "dbv", "dbmv", "dbuv", "dbu"})) {
+    if (in_set({"db", "times", "ratio", "times_amp", "times_v", "db_amp", "db_v", "dbm", "dbw", "dbv", "dbmv", "dbuv", "dbu"})) {
         dims |= DIM_DB_RATIO;
     }
     if (in_set({"hz", "khz", "mhz", "ghz"})) {
@@ -1437,7 +1768,7 @@ static uint32_t get_unit_dimension_mask(const std::string& raw_unit) {
     if (in_set({"newton", "newtons", "n", "kn", "dyn", "dyne", "lbf", "kgf"})) {
         dims |= DIM_FORCE;
     }
-    if (in_set({"degc", "degf", "kelvin", "k"})) {
+    if (in_set({"degc", "degf", "kelvin", "k", "tempc", "tempf", "tempk", "tempr", "degr", "celsius", "fahrenheit", "rankine"})) {
         dims |= DIM_TEMPERATURE;
     }
     if (in_set({"deg", "degree", "degrees", "rad", "radian", "radians"})) {
@@ -1509,8 +1840,39 @@ static const ConvUnitCandidate conv_units[] = {
     {"newton", DIM_FORCE}, {"N", DIM_FORCE}, {"kN", DIM_FORCE}, {"dyn", DIM_FORCE},
     {"dyne", DIM_FORCE}, {"lbf", DIM_FORCE}, {"kgf", DIM_FORCE},
     {"degC", DIM_TEMPERATURE}, {"degF", DIM_TEMPERATURE}, {"kelvin", DIM_TEMPERATURE}, {"K", DIM_TEMPERATURE},
-    {"deg", DIM_ANGLE}, {"degree", DIM_ANGLE}, {"rad", DIM_ANGLE}, {"radian", DIM_ANGLE}
+    {"deg", DIM_ANGLE}, {"degree", DIM_ANGLE}, {"rad", DIM_ANGLE}, {"radian", DIM_ANGLE},
+    {"nauticalmile", DIM_LENGTH}, {"angstrom", DIM_LENGTH}, {"au", DIM_LENGTH},
+    {"sqft", DIM_AREA_WIRE}, {"sqin", DIM_AREA_WIRE},
+    {"cm^3", DIM_VOLUME}, {"cm3", DIM_VOLUME}, {"litre", DIM_VOLUME},
+    {"psf", DIM_PRESSURE}, {"horsepower", DIM_POWER},
+    {"coulomb", DIM_EM}, {"tesla", DIM_EM}, {"weber", DIM_EM},
+    {"stone", DIM_MASS}, {"carat", DIM_MASS},
+    {"tempC", DIM_TEMPERATURE}, {"tempF", DIM_TEMPERATURE}, {"tempK", DIM_TEMPERATURE}, {"tempR", DIM_TEMPERATURE}, {"degR", DIM_TEMPERATURE}
 };
+
+std::vector<std::string> getConvUnitMatches(const std::string& from_unit, const std::string& prefix) {
+    uint32_t from_mask = get_unit_dimension_mask(from_unit);
+    std::vector<std::string> matches;
+    for (const auto& u : conv_units) {
+        if (from_mask != DIM_NONE && (u.dims & from_mask) == 0) {
+            continue;
+        }
+        std::string word = u.name;
+        if (word.size() >= prefix.size()) {
+            bool match = true;
+            for (size_t i = 0; i < prefix.size(); ++i) {
+                if (std::tolower((unsigned char)word[i]) != std::tolower((unsigned char)prefix[i])) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match && std::find(matches.begin(), matches.end(), word) == matches.end()) {
+                matches.push_back(word);
+            }
+        }
+    }
+    return matches;
+}
 
 void resetTabState() {
     g_tab_orig_prefix = "";
@@ -1632,31 +1994,7 @@ void handleTabCompletion(std::string& expression, int& cursor_pos) {
     }
 
     if (is_in_conv && left_ctx.substr(last_conv + 5).find(',') != std::string::npos) {
-        uint32_t from_mask = get_unit_dimension_mask(from_unit);
-
-        auto check_unit_candidate = [&](const std::string& word) {
-            if (word.size() >= g_tab_orig_prefix.size()) {
-                bool match = true;
-                for (size_t i = 0; i < g_tab_orig_prefix.size(); ++i) {
-                    if (std::tolower((unsigned char)word[i]) != std::tolower((unsigned char)g_tab_orig_prefix[i])) {
-                        match = false;
-                        break;
-                    }
-                }
-                if (match) {
-                    if (std::find(matches.begin(), matches.end(), word) == matches.end()) {
-                        matches.push_back(word);
-                    }
-                }
-            }
-        };
-
-        for (const auto& u : conv_units) {
-            if (from_mask != DIM_NONE && (u.dims & from_mask) == 0) {
-                continue;
-            }
-            check_unit_candidate(u.name);
-        }
+        matches = getConvUnitMatches(from_unit, g_tab_orig_prefix);
     }
 
     if (matches.empty()) {
@@ -1725,14 +2063,31 @@ std::string preprocessArrayLookups(const std::string& expr, std::string& err) {
         size_t open_bracket = std::string::npos;
         size_t id_start = std::string::npos;
         std::string array_name = "";
+        std::string inline_arr_expr = "";
         
         for (size_t i = 0; i < res.size(); ++i) {
             if (res[i] == '[') {
                 open_bracket = i;
             } else if (res[i] == ']' && open_bracket != std::string::npos) {
                 close_bracket = i;
+                if (open_bracket > 0 && (res[open_bracket - 1] == ')' || res[open_bracket - 1] == ']')) {
+                    char close_c = res[open_bracket - 1];
+                    char open_c = (close_c == ')') ? '(' : '[';
+                    int depth = 1;
+                    size_t j = open_bracket - 1;
+                    while (j > 0 && depth > 0) {
+                        j--;
+                        if (res[j] == close_c) depth++;
+                        else if (res[j] == open_c) depth--;
+                    }
+                    if (depth == 0) {
+                        id_start = j;
+                        inline_arr_expr = res.substr(id_start, open_bracket - id_start);
+                        break;
+                    }
+                }
                 size_t temp_start = open_bracket;
-                while (temp_start > 0 && (std::isalnum(res[temp_start - 1]) || res[temp_start - 1] == '_')) {
+                while (temp_start > 0 && (std::isalnum((unsigned char)res[temp_start - 1]) || res[temp_start - 1] == '_')) {
                     temp_start--;
                 }
                 if (temp_start < open_bracket) {
@@ -1746,22 +2101,40 @@ std::string preprocessArrayLookups(const std::string& expr, std::string& err) {
         
         if (id_start != std::string::npos && open_bracket != std::string::npos && close_bracket != std::string::npos) {
             std::string index_expr = res.substr(open_bracket + 1, close_bracket - open_bracket - 1);
-            if (user_arrays.find(array_name) == user_arrays.end()) {
-                err = "Array " + array_name + " not defined";
-                return expr;
+            std::vector<double> temp_arr;
+            const std::vector<double>* arr_ptr = nullptr;
+            std::string disp_name = array_name;
+
+            if (!inline_arr_expr.empty()) {
+                bool is_arr = false;
+                temp_arr = parseArrayExpr(inline_arr_expr, is_arr, err);
+                if (!err.empty()) return expr;
+                if (!is_arr) {
+                    err = "Expression is not an array";
+                    return expr;
+                }
+                arr_ptr = &temp_arr;
+                disp_name = inline_arr_expr;
+            } else {
+                if (user_arrays.find(array_name) == user_arrays.end()) {
+                    err = "Array " + array_name + " not defined";
+                    return expr;
+                }
+                arr_ptr = &user_arrays[array_name];
             }
+
             double idx_val = evaluate(index_expr, err);
             if (!err.empty()) {
                 return expr;
             }
             int idx = (int)std::round(idx_val);
-            const auto& arr = user_arrays[array_name];
+            const auto& arr = *arr_ptr;
             if (idx < 1 || idx > (int)arr.size()) {
-                err = "Index " + std::to_string(idx) + " out of bounds for array " + array_name + " (size " + std::to_string(arr.size()) + ")";
+                err = "Index " + std::to_string(idx) + " out of bounds for array " + disp_name + " (size " + std::to_string(arr.size()) + ")";
                 return expr;
             }
             double element_val = arr[idx - 1];
-            res.replace(id_start, (close_bracket - id_start + 1), fmtNum(element_val));
+            res.replace(id_start, (close_bracket - id_start + 1), fmtInternal(element_val));
             replaced_any = true;
         }
     }
@@ -1806,16 +2179,27 @@ std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::
     // Binary operations on arrays: e.g. 3 * t or px .* px or 5 * sin(3*t)
     std::string b_op1, b_op, b_op2;
     if (parseBinaryOp(trimmed, b_op1, b_op, b_op2)) {
-        bool is_scalar = false;
-        double scalar_res = 0;
-        std::string bin_err;
-        std::vector<double> res = evaluateArrayBinaryOp(b_op1, b_op, b_op2, is_scalar, scalar_res, bin_err);
-        if (bin_err.empty() && (!res.empty() || is_scalar)) {
-            if (is_scalar) {
-                return {scalar_res};
-            } else {
-                is_array = true;
-                return res;
+        bool is1_arr = false, is2_arr = false;
+        std::string err1, err2;
+        std::vector<double> a1 = parseArrayExpr(b_op1, is1_arr, err1);
+        std::vector<double> a2 = parseArrayExpr(b_op2, is2_arr, err2);
+        if (b_op == ".*" || b_op == "./" || is1_arr || is2_arr || !err1.empty() || !err2.empty()) {
+            bool is_scalar = false;
+            double scalar_res = 0;
+            std::string bin_err;
+            std::vector<double> res = evaluateArrayBinaryOp(b_op1, b_op, b_op2, is_scalar, scalar_res, bin_err);
+            if (!bin_err.empty()) {
+                if (is1_arr || is2_arr || b_op == ".*" || b_op == "./" || !err1.empty() || !err2.empty()) {
+                    err = bin_err;
+                    return {};
+                }
+            } else if (!res.empty() || is_scalar) {
+                if (is_scalar) {
+                    return {scalar_res};
+                } else {
+                    is_array = true;
+                    return res;
+                }
             }
         }
     }
@@ -1854,6 +2238,10 @@ std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::
             bool is_arg_arr = false;
             std::string sub_err;
             std::vector<double> arg_vec = parseArrayExpr(arg_str, is_arg_arr, sub_err);
+            if (!sub_err.empty()) {
+                err = sub_err;
+                return {};
+            }
             if (is_arg_arr && sub_err.empty()) {
                 if (func_name == "len") {
                     is_array = false;
@@ -1868,6 +2256,11 @@ std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::
                     double sum = 0.0;
                     for (double v : arg_vec) sum += v;
                     return {sum};
+                } else if (func_name == "prod") {
+                    is_array = false;
+                    double prod = 1.0;
+                    for (double v : arg_vec) prod *= v;
+                    return {arg_vec.empty() ? 0.0 : prod};
                 } else if (func_name == "min") {
                     is_array = false;
                     if (arg_vec.empty()) return {0.0};
@@ -1888,6 +2281,17 @@ std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::
                     size_t sz = sorted.size();
                     if (sz % 2 == 0) return {(sorted[sz/2 - 1] + sorted[sz/2]) / 2.0};
                     else return {sorted[sz/2]};
+                } else if (func_name == "mode") {
+                    is_array = false;
+                    if (arg_vec.empty()) return {0.0};
+                    std::map<double, int> counts;
+                    for (double v : arg_vec) counts[v]++;
+                    double bval = arg_vec[0];
+                    int maxc = 0;
+                    for (const auto& kv : counts) {
+                        if (kv.second > maxc) { maxc = kv.second; bval = kv.first; }
+                    }
+                    return {bval};
                 } else if (func_name == "std" || func_name == "var") {
                     is_array = false;
                     if (arg_vec.empty()) return {0.0};
@@ -1941,11 +2345,13 @@ std::vector<double> parseArrayExpr(const std::string& rhs, bool& is_array, std::
                     else if (func_name == "round") res[i] = round(val);
                     else if (func_name == "trunc") res[i] = trunc(val);
                     else if (func_name == "sgn") res[i] = (val > 0.0 ? 1.0 : (val < 0.0 ? -1.0 : 0.0));
+                    else if (func_name == "fact") res[i] = custom_fact(val);
+                    else if (func_name == "fib") res[i] = custom_fib(val);
                     else res[i] = val;
-                }
-                if (!g_math_domain_err.empty()) {
-                    err = g_math_domain_err;
-                    return {};
+                    if (!g_math_domain_err.empty()) {
+                        err = g_math_domain_err;
+                        return {};
+                    }
                 }
                 return res;
             }
