@@ -228,9 +228,9 @@ inline double custom_log2(double x) {
     return std::log2(x);
 }
 
-inline double custom_logb(double b, double x) {
+inline double custom_logb(double x, double b) {
     if (x <= 0.0 || b <= 0.0 || b == 1.0) {
-        g_math_domain_err = "Domain Error: logb(b, x) requires b > 0, b != 1, x > 0";
+        g_math_domain_err = "Domain Error: logb(x, base) requires x > 0, base > 0, base != 1";
         return std::numeric_limits<double>::quiet_NaN();
     }
     g_last_result_angle = AngleUnit::NONE;
@@ -247,9 +247,17 @@ inline double custom_fact(double n) {
         g_math_domain_err = "Domain Error: fact(n) requires n >= 0";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    if (std::floor(n) != n) {
+        g_math_domain_err = "Domain Error: fact(n) requires integer n >= 0";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (n > 170.0) {
+        g_math_domain_err = "Overflow Error: fact(n) exceeds maximum limit (n <= 170)";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
     g_last_result_angle = AngleUnit::NONE;
     double res = 1.0;
-    for (int i = 2; i <= (int)n; ++i) res *= i;
+    for (int i = 2; i <= static_cast<int>(n); ++i) res *= i;
     return res;
 }
 
@@ -258,8 +266,26 @@ inline double custom_C(double n, double k) {
         g_math_domain_err = "Domain Error: C(n, k) requires 0 <= k <= n";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    if (std::floor(n) != n || std::floor(k) != k) {
+        g_math_domain_err = "Domain Error: C(n, k) requires integer arguments";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
     g_last_result_angle = AngleUnit::NONE;
-    return custom_fact(n) / (custom_fact(k) * custom_fact(n - k));
+    double k_eff = std::min(k, n - k);
+    if (k_eff > 100000.0) {
+        g_math_domain_err = "Overflow Error: C(n, k) exceeds maximum limit";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    double res = 1.0;
+    int ki = static_cast<int>(k_eff);
+    for (int i = 1; i <= ki; ++i) {
+        res = res * (n - ki + i) / i;
+        if (std::isinf(res)) {
+            g_math_domain_err = "Overflow Error: C(n, k) exceeds maximum limit";
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+    }
+    return std::round(res);
 }
 
 inline double custom_P(double n, double k) {
@@ -267,8 +293,25 @@ inline double custom_P(double n, double k) {
         g_math_domain_err = "Domain Error: P(n, k) requires 0 <= k <= n";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    if (std::floor(n) != n || std::floor(k) != k) {
+        g_math_domain_err = "Domain Error: P(n, k) requires integer arguments";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
     g_last_result_angle = AngleUnit::NONE;
-    return custom_fact(n) / custom_fact(n - k);
+    if (k > 171.0) {
+        g_math_domain_err = "Overflow Error: P(n, k) exceeds maximum limit";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    double res = 1.0;
+    int ki = static_cast<int>(k);
+    for (int i = 0; i < ki; ++i) {
+        res *= (n - i);
+        if (std::isinf(res)) {
+            g_math_domain_err = "Overflow Error: P(n, k) exceeds maximum limit";
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+    }
+    return res;
 }
 #include <numeric>
 
@@ -281,11 +324,19 @@ inline double custom_lcm(double a, double b) {
     return (double)std::lcm((int64_t)std::abs((int64_t)a), (int64_t)std::abs((int64_t)b));
 }
 inline double custom_fib(double n) {
-    int val = (int)n;
-    if (val < 0) {
+    if (n < 0.0) {
         g_math_domain_err = "Domain Error: fib(n) requires n >= 0";
         return std::numeric_limits<double>::quiet_NaN();
     }
+    if (std::floor(n) != n) {
+        g_math_domain_err = "Domain Error: fib(n) requires integer n >= 0";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (n > 1476.0) {
+        g_math_domain_err = "Overflow Error: fib(n) exceeds maximum limit (n <= 1476)";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    int val = static_cast<int>(n);
     g_last_result_angle = AngleUnit::NONE;
     if (val == 0) return 0;
     if (val == 1) return 1;
@@ -395,9 +446,107 @@ inline double variadic_mode(
     return best_val;
 }
 
+inline double variadic_sum(
+    double a1, double a2, double a3, double a4, double a5, double a6, double a7, double a8,
+    double a9, double a10, double a11, double a12, double a13, double a14, double a15, double a16,
+    double a17, double a18, double a19, double a20, double a21, double a22, double a23, double a24) {
+    double sum = 0.0;
+    int count = 0;
+    double arr[24] = {a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24};
+    for (int i = 0; i < 24; ++i) {
+        if (!std::isnan(arr[i])) {
+            sum += arr[i];
+            count++;
+        }
+    }
+    return count > 0 ? sum : std::numeric_limits<double>::quiet_NaN();
+}
+
+inline double variadic_prod(
+    double a1, double a2, double a3, double a4, double a5, double a6, double a7, double a8,
+    double a9, double a10, double a11, double a12, double a13, double a14, double a15, double a16,
+    double a17, double a18, double a19, double a20, double a21, double a22, double a23, double a24) {
+    double prod = 1.0;
+    int count = 0;
+    double arr[24] = {a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24};
+    for (int i = 0; i < 24; ++i) {
+        if (!std::isnan(arr[i])) {
+            prod *= arr[i];
+            count++;
+        }
+    }
+    return count > 0 ? prod : std::numeric_limits<double>::quiet_NaN();
+}
+
+inline double variadic_min(
+    double a1, double a2, double a3, double a4, double a5, double a6, double a7, double a8,
+    double a9, double a10, double a11, double a12, double a13, double a14, double a15, double a16,
+    double a17, double a18, double a19, double a20, double a21, double a22, double a23, double a24) {
+    double m = std::numeric_limits<double>::infinity();
+    int count = 0;
+    double arr[24] = {a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24};
+    for (int i = 0; i < 24; ++i) {
+        if (!std::isnan(arr[i])) {
+            if (arr[i] < m) m = arr[i];
+            count++;
+        }
+    }
+    return count > 0 ? m : std::numeric_limits<double>::quiet_NaN();
+}
+
+inline double variadic_max(
+    double a1, double a2, double a3, double a4, double a5, double a6, double a7, double a8,
+    double a9, double a10, double a11, double a12, double a13, double a14, double a15, double a16,
+    double a17, double a18, double a19, double a20, double a21, double a22, double a23, double a24) {
+    double m = -std::numeric_limits<double>::infinity();
+    int count = 0;
+    double arr[24] = {a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24};
+    for (int i = 0; i < 24; ++i) {
+        if (!std::isnan(arr[i])) {
+            if (arr[i] > m) m = arr[i];
+            count++;
+        }
+    }
+    return count > 0 ? m : std::numeric_limits<double>::quiet_NaN();
+}
+
 inline double custom_dot(double a, double b) {
     g_last_result_angle = AngleUnit::NONE;
     return a * b;
+}
+
+inline double variadic_gcd(double a1, double a2, double a3, double a4, double a5, double a6, double a7, double a8,
+    double a9, double a10, double a11, double a12, double a13, double a14, double a15, double a16,
+    double a17, double a18, double a19, double a20, double a21, double a22, double a23, double a24) {
+    g_last_result_angle = AngleUnit::NONE;
+    double arr[24] = {a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24};
+    int64_t res = 0;
+    int count = 0;
+    for (int i = 0; i < 24; ++i) {
+        if (!std::isnan(arr[i])) {
+            int64_t v = std::abs(static_cast<int64_t>(arr[i]));
+            res = (count == 0) ? v : std::gcd(res, v);
+            count++;
+        }
+    }
+    return count > 0 ? static_cast<double>(res) : std::numeric_limits<double>::quiet_NaN();
+}
+
+inline double variadic_lcm(double a1, double a2, double a3, double a4, double a5, double a6, double a7, double a8,
+    double a9, double a10, double a11, double a12, double a13, double a14, double a15, double a16,
+    double a17, double a18, double a19, double a20, double a21, double a22, double a23, double a24) {
+    g_last_result_angle = AngleUnit::NONE;
+    double arr[24] = {a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24};
+    int64_t res = 1;
+    int count = 0;
+    for (int i = 0; i < 24; ++i) {
+        if (!std::isnan(arr[i])) {
+            int64_t v = std::abs(static_cast<int64_t>(arr[i]));
+            res = (count == 0) ? v : std::lcm(res, v);
+            count++;
+        }
+    }
+    return count > 0 ? static_cast<double>(res) : std::numeric_limits<double>::quiet_NaN();
 }
 
 // Formatting settings:
