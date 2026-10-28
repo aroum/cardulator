@@ -50,7 +50,8 @@ std::vector<std::string> autocomplete_words = {
     "arsh(", "arch(", "arth(", "artg(", "arctgh(",
     "acoth(", "ahcot(", "arccoth(", "arcoth(", "arcth(", "ahcoth(",
     "asech(", "ahsec(", "arcsech(", "arsech(", "ahsech(",
-    "acsch(", "ahcsc(", "arccsch(", "arcsch(", "acosech(", "arccosec(", "ahcsch("
+    "acsch(", "ahcsc(", "arccsch(", "arcsch(", "acosech(", "arccosech(", "ahcsch(",
+    "Cnk(", "sum(", "prod(", "min(", "max(", "if(", "iff("
 };
 bool degreesMode = true;
 bool auto_brackets = true;
@@ -86,7 +87,8 @@ void setUp(void) {
         "arsh(", "arch(", "arth(", "artg(", "arctgh(",
         "acoth(", "ahcot(", "arccoth(", "arcoth(", "arcth(", "ahcoth(",
         "asech(", "ahsec(", "arcsech(", "arsech(", "ahsech(",
-        "acsch(", "ahcsc(", "arccsch(", "arcsch(", "acosech(", "arccosec(", "ahcsch("
+        "acsch(", "ahcsc(", "arccsch(", "arcsch(", "acosech(", "arccosech(", "ahcsch(",
+        "Cnk(", "sum(", "prod(", "min(", "max(", "if(", "iff("
     };
     degreesMode = true;
     auto_brackets = true;
@@ -1390,6 +1392,226 @@ void test_plot_limits_extended(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-5, 2.0, plot_xlim_max);
 }
 
+void test_logb_and_combinatorics_bounds(void) {
+    std::string err;
+    // logb(x, base)
+    double v_logb1 = evaluate("logb(8, 2)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 3.0, v_logb1);
+
+    double v_logb2 = evaluate("logb(100, 10)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 2.0, v_logb2);
+
+    evaluate("logb(8, 1)", err);
+    TEST_ASSERT_TRUE(err.find("Domain Error") != std::string::npos);
+
+    evaluate("logb(-8, 2)", err);
+    TEST_ASSERT_TRUE(err.find("Domain Error") != std::string::npos);
+
+    // Factorial & Fibonacci integer/overflow validation
+    evaluate("fact(3.5)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: fact(n) requires integer n >= 0", err.c_str());
+
+    evaluate("fact(171)", err);
+    TEST_ASSERT_EQUAL_STRING("Overflow Error: fact(n) exceeds maximum limit (n <= 170)", err.c_str());
+
+    evaluate("fact(1e9)", err);
+    TEST_ASSERT_EQUAL_STRING("Overflow Error: fact(n) exceeds maximum limit (n <= 170)", err.c_str());
+
+    evaluate("fib(1477)", err);
+    TEST_ASSERT_EQUAL_STRING("Overflow Error: fib(n) exceeds maximum limit (n <= 1476)", err.c_str());
+
+    evaluate("fib(2.5)", err);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: fib(n) requires integer n >= 0", err.c_str());
+
+    // C(180, 2) and P(180, 2)
+    double v_c180 = evaluate("C(180, 2)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 16110.0, v_c180);
+
+    double v_cnk = evaluate("Cnk(10, 3)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 120.0, v_cnk);
+
+    double v_p180 = evaluate("P(180, 2)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 32220.0, v_p180);
+
+    // Variadic gcd / lcm / sum / prod
+    double v_gcd3 = evaluate("gcd(12, 18, 30)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 6.0, v_gcd3);
+
+    double v_lcm3 = evaluate("lcm(4, 6, 8)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 24.0, v_lcm3);
+
+    double v_sum_var = evaluate("sum(1, 2, 3, 4, 5)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 15.0, v_sum_var);
+
+    double v_prod_var = evaluate("prod(2, 3, 4)", err);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 24.0, v_prod_var);
+
+    // Division by Zero vs Overflow Error
+    evaluate("1 / 0", err);
+    TEST_ASSERT_EQUAL_STRING("Division by Zero", err.c_str());
+
+    evaluate("exp(1000)", err);
+    TEST_ASSERT_EQUAL_STRING("Overflow Error", err.c_str());
+}
+
+void test_inline_conditionals_and_loops(void) {
+    std::string err;
+    bool isDef = false;
+
+    double v_if1 = evaluateInput("if(5 > 3, 10, 20)", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 10.0, v_if1);
+
+    double v_if2 = evaluateInput("if(2 > 5, 10, 20)", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 20.0, v_if2);
+
+    double v_iff = evaluateInput("iff(2 > 5, 10, 3 == 3, 42, 99)", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 42.0, v_iff);
+
+    double v_loop_sum = evaluateInput("sum(i, 1, 10, i^2)", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 385.0, v_loop_sum);
+
+    double v_loop_prod = evaluateInput("prod(i, 1, 5, i)", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 120.0, v_loop_prod);
+
+    double v_loop_min = evaluateInput("min(i, 1, 5, (i - 3)^2 + 2)", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 2.0, v_loop_min);
+
+    double v_loop_max = evaluateInput("max(i, 1, 5, i * 3)", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 15.0, v_loop_max);
+}
+
+void test_array_indexing_and_vector_stats(void) {
+    std::string err;
+    bool isDef = false;
+
+    evaluateInput("arr = [10, 20, 30, 40]", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_TRUE(isDef);
+    TEST_ASSERT_EQUAL_INT(4, user_arrays["arr"].size());
+
+    double v_arr_idx = evaluateInput("arr[2]", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 20.0, v_arr_idx);
+
+    double v_arr_sum = evaluateInput("sum(arr)", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 100.0, v_arr_sum);
+
+    double v_arr_prod = evaluateInput("prod(arr)", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 240000.0, v_arr_prod);
+
+    double v_arr_mean = evaluateInput("mean(arr)", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 25.0, v_arr_mean);
+
+    double v_inline_idx = evaluateInput("(1:2:10)[2]", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 3.0, v_inline_idx);
+
+    evaluateInput("vecA = [1, 2, 3]", err, isDef);
+    evaluateInput("vecB = [4, 5, 6]", err, isDef);
+    double v_dot = evaluateInput("vecA * vecB", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 32.0, v_dot);
+
+    degreesMode = true;
+    evaluateInput("sin([0, 30, 90])", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_TRUE(g_last_eval_is_array);
+    TEST_ASSERT_EQUAL_INT(3, g_last_eval_array.size());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 0.5, g_last_eval_array[1]);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 1.0, g_last_eval_array[2]);
+
+    evaluateInput("asec([0.5, 2])", err, isDef);
+    TEST_ASSERT_EQUAL_STRING("Domain Error: asec(x) requires |x| >= 1", err.c_str());
+}
+
+void test_units_extended(void) {
+    std::string dat = "";
+    ConvResult c_amp = handleConv(10, "times_amp", "dB", dat);
+    TEST_ASSERT_TRUE(c_amp.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 20.0, c_amp.value);
+
+    ConvResult c_v = handleConv(10, "times_v", "dB", dat);
+    TEST_ASSERT_TRUE(c_v.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 20.0, c_v.value);
+
+    ConvResult c_pow = handleConv(10, "times", "dB", dat);
+    TEST_ASSERT_TRUE(c_pow.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 10.0, c_pow.value);
+
+    ConvResult c_neg = handleConv(-5, "times", "dB", dat);
+    TEST_ASSERT_FALSE(c_neg.success);
+    TEST_ASSERT_TRUE(c_neg.errorMsg.find("Domain Error") != std::string::npos);
+
+    ConvResult c_t1 = handleConv(100, "tempC", "tempF", dat);
+    TEST_ASSERT_TRUE(c_t1.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-4, 212.0, c_t1.value);
+
+    ConvResult c_t2 = handleConv(0, "tempC", "tempK", dat);
+    TEST_ASSERT_TRUE(c_t2.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-4, 273.15, c_t2.value);
+
+    ConvResult c_t3 = handleConv(0, "tempK", "degR", dat);
+    TEST_ASSERT_TRUE(c_t3.success);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-4, 0.0, c_t3.value);
+
+    auto matches = getConvUnitMatches("mm", "k");
+    TEST_ASSERT_FALSE(matches.empty());
+    TEST_ASSERT_EQUAL_STRING("km", matches[0].c_str());
+}
+
+void test_script_scoping_and_recursion(void) {
+    std::string err;
+    bool isDef = false;
+    user_args.clear();
+    user_arrays.clear();
+    evaluateInput("session_var = 100", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+
+    std::string script_code =
+        "fn fact_rec(n) {\n"
+        "  if (n <= 1) {\n"
+        "    return 1\n"
+        "  }\n"
+        "  return n * fact_rec(n - 1)\n"
+        "}\n"
+        "total = session_var\n"
+        "for (i = 1; i <= 5; i = i + 1) {\n"
+        "  total = total + i\n"
+        "}\n"
+        "r = fact_rec(5)\n"
+        "print(total + r)\n";
+    runScript(script_code);
+
+    std::string script_out;
+    for (const auto& line : script_console_output) script_out += line + "\n";
+    // session_var(100) + sum(1..5)(15) + fact_rec(5)(120) = 235
+    TEST_ASSERT_TRUE(script_out.find("235") != std::string::npos);
+
+    // Verify session_var was preserved
+    double v_sess = evaluateInput("session_var", err, isDef);
+    TEST_ASSERT_TRUE(err.empty());
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 100.0, v_sess);
+}
+
 int main(int argc, char **argv) {
     std::setlocale(LC_ALL, "C");
     UNITY_BEGIN();
@@ -1419,5 +1641,10 @@ int main(int argc, char **argv) {
     RUN_TEST(test_num_formatting);
     RUN_TEST(test_tab_completion_suite);
     RUN_TEST(test_plot_limits_extended);
+    RUN_TEST(test_logb_and_combinatorics_bounds);
+    RUN_TEST(test_inline_conditionals_and_loops);
+    RUN_TEST(test_array_indexing_and_vector_stats);
+    RUN_TEST(test_units_extended);
+    RUN_TEST(test_script_scoping_and_recursion);
     return UNITY_END();
 }
