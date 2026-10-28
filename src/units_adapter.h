@@ -100,28 +100,28 @@ inline ConvResult handleConv(double value,
         return false;
     };
 
-    auto parseEIA96 = [](const std::string& code, double& ohms) -> bool {
+    constexpr static const int EIA96_TABLE[97] = {
+        0,
+        100, 102, 105, 107, 110, 113, 115, 118, 121, 124,
+        127, 130, 133, 137, 140, 143, 147, 150, 154, 158,
+        162, 165, 169, 174, 178, 182, 187, 191, 196, 200,
+        205, 210, 215, 221, 226, 232, 237, 243, 249, 255,
+        261, 267, 274, 280, 287, 294, 301, 309, 316, 324,
+        332, 340, 348, 357, 365, 374, 383, 392, 402, 412,
+        422, 432, 442, 453, 464, 475, 487, 499, 511, 523,
+        536, 549, 562, 576, 590, 604, 619, 634, 649, 665,
+        681, 698, 715, 732, 750, 768, 787, 806, 825, 845,
+        866, 887, 909, 931, 953, 976
+    };
+
+    auto parseEIA96 = [&](const std::string& code, double& ohms) -> bool {
         std::string s = code;
         if (s.size() != 3) return false;
         std::transform(s.begin(), s.end(), s.begin(), ::toupper);
         if (!std::isdigit(s[0]) || !std::isdigit(s[1])) return false;
         int codeNum = (s[0] - '0') * 10 + (s[1] - '0');
-
-        static const int eia96_table[97] = {
-            0,
-            100, 102, 105, 107, 110, 113, 115, 118, 121, 124,
-            127, 130, 133, 137, 140, 143, 147, 150, 154, 158,
-            162, 165, 169, 174, 178, 182, 187, 191, 196, 200,
-            205, 210, 215, 221, 226, 232, 237, 243, 249, 255,
-            261, 267, 274, 280, 287, 294, 301, 309, 316, 324,
-            332, 340, 348, 357, 365, 374, 383, 392, 402, 412,
-            422, 432, 442, 453, 464, 475, 487, 499, 511, 523,
-            536, 549, 562, 576, 590, 604, 619, 634, 649, 665,
-            681, 698, 715, 732, 750, 768, 787, 806, 825, 845,
-            866, 887, 909, 931, 953, 976
-        };
         if (codeNum < 1 || codeNum > 96) return false;
-        int base = eia96_table[codeNum];
+        int base = EIA96_TABLE[codeNum];
 
         double mult = 0.0;
         char multChar = s[2];
@@ -467,28 +467,27 @@ inline ConvResult handleConv(double value,
         res.unitStr = lb.empty() ? "times" : unit_b;
         return res;
     }
-    if (la == "db_power" && is_ratio_b) {
+    if (la == "db_power" && (is_ratio_b || lb.empty())) {
         res.success = true;
         res.value = std::pow(10.0, value / 10.0);
-        res.unitStr = unit_b;
+        res.unitStr = lb.empty() ? "times" : unit_b;
         return res;
     }
-    if ((la == "db_amp" || la == "db_v") && is_ratio_b) {
+    if ((la == "db_amp" || la == "db_v") && (is_ratio_b || lb.empty())) {
         res.success = true;
         res.value = std::pow(10.0, value / 20.0);
-        res.unitStr = unit_b;
+        res.unitStr = lb.empty() ? "times" : unit_b;
         return res;
     }
-    if (is_ratio_a && lb == "db") {
+    if (is_ratio_a && (lb == "db" || lb == "db_power" || lb == "db_amp" || lb == "db_v")) {
+        if (value <= 0.0) {
+            res.errorMsg = "Domain Error: dB conversion requires ratio > 0";
+            return res;
+        }
         res.success = true;
-        res.value = 10.0 * std::log10(value);
-        res.unitStr = "dB";
-        return res;
-    }
-    if (is_ratio_a && la == "times_amp" && lb == "db") {
-        res.success = true;
-        res.value = 20.0 * std::log10(value);
-        res.unitStr = "dB";
+        bool is_amp = (la == "times_amp" || la == "times_v" || lb == "db_amp" || lb == "db_v");
+        res.value = (is_amp ? 20.0 : 10.0) * std::log10(value);
+        res.unitStr = (lb == "db") ? "dB" : unit_b;
         return res;
     }
 
@@ -514,6 +513,10 @@ inline ConvResult handleConv(double value,
         }
         // From target unit to dBx
         if (la == ref.targetUnit && lb == ref.name) {
+            if (value <= 0.0) {
+                res.errorMsg = "Domain Error: dB conversion requires value > 0";
+                return res;
+            }
             res.success = true;
             res.value = factor * std::log10(value / ref.refVal);
             res.unitStr = unit_b;
@@ -627,25 +630,32 @@ inline ConvResult handleConv(double value,
 
         // Temperature (special conversion)
         auto isTemp = [](const std::string& u) {
-            return u == "degc" || u == "degf" || u == "k" || u == "kelvin";
+            return u == "degc" || u == "tempc" || u == "celsius" ||
+                   u == "degf" || u == "tempf" || u == "fahrenheit" ||
+                   u == "k" || u == "tempk" || u == "kelvin" ||
+                   u == "degr" || u == "tempr" || u == "rankine";
         };
 
         if (isTemp(la) && (isTemp(lb) || lb.empty())) {
             double k = 0.0;
-            if (la == "degc") k = value + 273.15;
-            else if (la == "degf") k = (value - 32.0) * 5.0 / 9.0 + 273.15;
+            if (la == "degc" || la == "tempc" || la == "celsius") k = value + 273.15;
+            else if (la == "degf" || la == "tempf" || la == "fahrenheit") k = (value - 32.0) * 5.0 / 9.0 + 273.15;
+            else if (la == "degr" || la == "tempr" || la == "rankine") k = value * 5.0 / 9.0;
             else k = value;
 
             res.success = true;
-            if (lb.empty() || lb == "k" || lb == "kelvin") {
+            if (lb.empty() || lb == "k" || lb == "tempk" || lb == "kelvin") {
                 res.value = k;
-                res.unitStr = "K";
-            } else if (lb == "degc") {
+                res.unitStr = unit_b.empty() ? "K" : unit_b;
+            } else if (lb == "degc" || lb == "tempc" || lb == "celsius") {
                 res.value = k - 273.15;
-                res.unitStr = "degC";
-            } else if (lb == "degf") {
+                res.unitStr = unit_b.empty() ? "degC" : unit_b;
+            } else if (lb == "degf" || lb == "tempf" || lb == "fahrenheit") {
                 res.value = (k - 273.15) * 9.0 / 5.0 + 32.0;
-                res.unitStr = "degF";
+                res.unitStr = unit_b.empty() ? "degF" : unit_b;
+            } else if (lb == "degr" || lb == "tempr" || lb == "rankine") {
+                res.value = k * 9.0 / 5.0;
+                res.unitStr = unit_b.empty() ? "degR" : unit_b;
             }
             return res;
         }
