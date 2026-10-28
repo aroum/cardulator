@@ -67,9 +67,9 @@ Inverse hyperbolic functions calculate the area hyperbolic values for real argum
 
 ---
 
-## 6. General Mathematical Domain Errors
+## 6. General Mathematical Domain & Overflow Errors
 
-The engine validates arguments before computing logarithms,  square roots,  and factorials:
+The engine validates arguments before computing logarithms, square roots, factorials, and combinatorics:
 
 | Operation | Valid Domain | Error Message |
 | :--- | :--- | :--- |
@@ -77,8 +77,13 @@ The engine validates arguments before computing logarithms,  square roots,  and 
 | `ln(x)` | $x > 0$ | `Domain Error: ln(x) requires x > 0` |
 | `log(x)` / `log10(x)` | $x > 0$ | `Domain Error: log(x) requires x > 0` |
 | `log2(x)` | $x > 0$ | `Domain Error: log2(x) requires x > 0` |
-| `fact(n)` | $n \ge 0$ (integer) | `Domain Error: fact(n) requires n >= 0` |
+| `logb(x, b)` | $x > 0,\ b > 0,\ b \ne 1$ | `Domain Error: logb(x, b) requires x > 0 and b > 0, b != 1` |
+| `fact(n)` / `n!` | $0 \le n \le 170$ (integer) | `Domain Error: fact(n) requires n >= 0` / `Domain Error: fact(n) requires integer n >= 0` / `Overflow Error: fact(n) exceeds maximum limit (n <= 170)` |
+| `fib(n)` | $0 \le n \le 1476$ (integer) | `Domain Error: fib(n) requires n >= 0` / `Domain Error: fib(n) requires integer n >= 0` / `Overflow Error: fib(n) exceeds maximum limit (n <= 1476)` |
+| `C(n, k)` / `Cnk(n, k)` | $0 \le k \le n$ (integers) | `Domain Error: C(n, k) requires 0 <= k <= n` / `Domain Error: C(n, k) requires integer arguments` / `Overflow Error: C(n, k) exceeds maximum limit` |
+| `P(n, k)` | $0 \le k \le n$ (integers) | `Domain Error: P(n, k) requires 0 <= k <= n` / `Domain Error: P(n, k) requires integer arguments` / `Overflow Error: P(n, k) exceeds maximum limit` |
 | Division by zero | Denominator $\ne 0$ | `Division by Zero` |
+| Floating-point overflow | Finite result | `Overflow Error` |
 
 ---
 
