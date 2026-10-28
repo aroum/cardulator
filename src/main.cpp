@@ -106,7 +106,8 @@ std::vector<std::string> autocomplete_words = {
     "arsh(", "arch(", "arth(", "artg(", "arctgh(",
     "acoth(", "ahcot(", "arccoth(", "arcoth(", "arcth(", "ahcoth(",
     "asech(", "ahsec(", "arcsech(", "arsech(", "ahsech(",
-    "acsch(", "ahcsc(", "arccsch(", "arcsch(", "acosech(", "arccosec(", "ahcsch("
+    "acsch(", "ahcsc(", "arccsch(", "arcsch(", "acosech(", "arccosech(", "ahcsch(",
+    "Cnk(", "sum(", "prod(", "min(", "max(", "if(", "iff("
 };
 std::map<std::string, std::vector<double>> user_arrays;
 
@@ -2721,13 +2722,23 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
                 pushExprHistory(expression);
                 history_index = expr_history.size();
                 if (!last_is_def) {
-                    resultStr = fmtNum(last_res);
-                    if (g_last_result_angle == AngleUnit::DEG) {
-                        resultStr += " (deg)";
-                    } else if (g_last_result_angle == AngleUnit::RAD) {
-                        resultStr += " (rad)";
+                    if (g_last_eval_is_array) {
+                        std::string arr_str = "[";
+                        for (size_t i = 0; i < g_last_eval_array.size(); ++i) {
+                            if (i > 0) arr_str += ", ";
+                            arr_str += fmtNum(g_last_eval_array[i]);
+                        }
+                        arr_str += "]";
+                        resultStr = arr_str;
+                    } else {
+                        resultStr = fmtNum(last_res);
+                        if (g_last_result_angle == AngleUnit::DEG) {
+                            resultStr += " (deg)";
+                        } else if (g_last_result_angle == AngleUnit::RAD) {
+                            resultStr += " (rad)";
+                        }
                     }
-                    pushResultHistory(last_res, "e" + std::to_string(history.size()) + " = " + resultStr);
+                    pushResultHistory(last_res, "e" + std::to_string(history.size() + 1) + " = " + resultStr);
                 } else {
                     pushResultHistory(std::numeric_limits<double>::quiet_NaN(), resultStr);
                 }
@@ -2788,7 +2799,19 @@ static void handleCalcKey(Keyboard_Class::KeysState& s) {
                     label = trimmed;
                 }
                 
-                if (!label.empty()) {
+                if (g_last_eval_is_array) {
+                    std::string arr_str = "[";
+                    for (size_t i = 0; i < g_last_eval_array.size(); ++i) {
+                        if (i > 0) arr_str += ", ";
+                        arr_str += fmtNum(g_last_eval_array[i]);
+                    }
+                    arr_str += "]";
+                    if (!label.empty()) {
+                        resultStr = label + " = " + arr_str;
+                    } else {
+                        resultStr = "e" + std::to_string(history.size() + 1) + " = " + arr_str;
+                    }
+                } else if (!label.empty()) {
                     resultStr = label + " = " + fmtNum(result);
                     if (g_last_result_angle == AngleUnit::DEG) {
                         resultStr += " (deg)";
